@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Cụm MySQL Database chứa 4 Schema độc lập
+  mysql:
+    image: mysql:8.0
+    container_name: csm_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - csm_mysql_data:/var/lib/mysql
+      - ./infrastructure/docker-local/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - csm-network
+
+  # Quản lý Database qua Web (http://localhost:8080 - User: root / Pass: root)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: csm_phpmyadmin
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    networks:
+      - csm-network
+
+volumes:
+  csm_mysql_data:
+
+networks:
+  csm-network:
+    driver: bridge

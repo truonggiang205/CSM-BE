@@ -1,0 +1,16 @@
+{
+  "name": "csm-be",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hệ thống Microservices Backend cho chuỗi cửa hàng tiện lợi CSM",
+  "scripts": {
+    "start:gateway": "cd apps/api-gateway && npm run start:dev",
+    "start:auth": "cd apps/auth-service && npm run start:dev",
+    "start:product": "cd apps/product-service && npm run start:dev",
+    "start:inventory": "cd apps/inventory-service && npm run start:dev",
+    "start:order": "cd apps/order-service && npm run start:dev",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "keywords": ["microservices", "nestjs", "mysql", "docker", "ecommerce"]
+}

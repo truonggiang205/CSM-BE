@@ -1,0 +1,27 @@
+# Node modules & logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Docker data volume
+docker-data/
+*.log
