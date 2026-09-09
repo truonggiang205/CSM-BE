@@ -8,9 +8,7 @@
     "start:auth": "cd apps/auth-service && npm run start:dev",
     "start:product": "cd apps/product-service && npm run start:dev",
     "start:inventory": "cd apps/inventory-service && npm run start:dev",
-    "start:order": "cd apps/order-service && npm run start:dev",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "start:order": "cd apps/order-service && npm run start:dev"
   },
   "keywords": ["microservices", "nestjs", "mysql", "docker", "ecommerce"]
 }
