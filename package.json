@@ -8,7 +8,41 @@
     "start:auth": "cd apps/auth-service && npm run start:dev",
     "start:product": "cd apps/product-service && npm run start:dev",
     "start:inventory": "cd apps/inventory-service && npm run start:dev",
-    "start:order": "cd apps/order-service && npm run start:dev"
+    "start:order": "cd apps/order-service && npm run start:dev",
+    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:auth\" \"npm run start:product\" \"npm run start:inventory\" \"npm run start:order\""
   },
-  "keywords": ["microservices", "nestjs", "mysql", "docker", "ecommerce"]
+  "keywords": [
+    "microservices",
+    "nestjs",
+    "mysql",
+    "docker",
+    "ecommerce"
+  ],
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^3.3.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/typeorm": "^10.0.2",
+    "axios": "^1.7.7",
+    "bcrypt": "^5.1.1",
+    "mysql2": "^3.11.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.1",
+    "typeorm": "^0.3.31"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.0.0",
+    "@nestjs/schematics": "^10.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/express": "^4.17.17",
+    "@types/node": "^20.3.1",
+    "concurrently": "^10.0.5",
+    "typescript": "^5.1.3"
+  }
 }
