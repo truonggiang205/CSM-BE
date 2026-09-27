@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderController } from './order.controller';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
   imports: [
@@ -25,6 +26,9 @@ import { OrderItem } from './entities/order-item.entity';
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([Order, OrderItem]),
+    JwtModule.register({
+      secret: 'super-secret',
+    }),
   ],
   controllers: [OrderController],
   providers: [],
