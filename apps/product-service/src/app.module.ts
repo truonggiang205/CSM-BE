@@ -17,11 +17,14 @@ import { Category } from './entities/category.entity';
         type: 'mysql',
         url: configService.get<string>('PRODUCT_DB_URL'),
         entities: [Product, Category],
-        synchronize: true, // Use only in dev
-        ssl: {
-          rejectUnauthorized: false, // Required by Aiven MySQL
-        },
+        synchronize:
+          configService.get<string>('NODE_ENV') === 'development' ||
+          configService.get<string>('DB_SYNC') === 'true',
+        ssl: configService.get<string>('PRODUCT_DB_URL')?.includes('ssl-mode=REQUIRED')
+          ? { rejectUnauthorized: false }
+          : false,
       }),
+
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([Product, Category]),
