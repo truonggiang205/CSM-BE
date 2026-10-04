@@ -102,7 +102,7 @@ export class InventoryController {
     }
   }
 
-  // 1. SAGA - Bước 1: Giữ hàng tạm thời (Reserve Stock) - Idempotent theo referenceId
+  // 1. SAGA - Bước 1: Giữ hàng tạm thời (Reserve Stock) - Idempotent theo referenceId + stock_id
   @Post('reserve-stock')
   async reserveStock(
     @Body() body: { branchId: string; items: Array<{ productId: string; quantity: number }>; referenceId?: string },
@@ -114,20 +114,7 @@ export class InventoryController {
     await queryRunner.startTransaction();
 
     try {
-      // KIỂM TRA IDEMPOTENCY: Nếu đã có giao dịch RESERVE với reference_id này, trả về kết quả thành công ngay
-      if (referenceId) {
-        const existingTx = await queryRunner.manager.findOne(StockTransaction, {
-          where: { reference_id: referenceId, type: TransactionType.RESERVE },
-        });
-        if (existingTx) {
-          await queryRunner.rollbackTransaction();
-          return {
-            success: true,
-            message: 'Đơn hàng đã được giữ tồn kho trước đó (Idempotent)',
-            idempotent: true,
-          };
-        }
-      }
+      let alreadyHandledCount = 0;
 
       for (const item of items) {
         // Sử dụng pessimistic_write để lock dòng record, chống race condition
@@ -138,6 +125,21 @@ export class InventoryController {
 
         if (!stock) {
           throw new BadRequestException(`Sản phẩm ID ${item.productId} không có trong kho tại chi nhánh ${branchId}!`);
+        }
+
+        // KIỂM TRA IDEMPOTENCY SAU KHI ĐÃ LOCK PESSIMISTIC_WRITE
+        if (referenceId) {
+          const existingTx = await queryRunner.manager.findOne(StockTransaction, {
+            where: {
+              reference_id: referenceId,
+              stock_id: stock.id,
+              type: TransactionType.RESERVE,
+            },
+          });
+          if (existingTx) {
+            alreadyHandledCount++;
+            continue;
+          }
         }
 
         const available = stock.quantity - stock.reserved_quantity;
@@ -162,9 +164,26 @@ export class InventoryController {
       }
 
       await queryRunner.commitTransaction();
+
+      if (alreadyHandledCount === items.length && items.length > 0) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được giữ tồn kho trước đó (Idempotent)',
+          idempotent: true,
+        };
+      }
+
       return { success: true, message: 'Đã giữ hàng (reserve) thành công', idempotent: false };
-    } catch (err) {
+    } catch (err: any) {
       await queryRunner.rollbackTransaction();
+      // Bắt lỗi trùng khóa unique index (ER_DUP_ENTRY / 1062) khi xảy ra race condition đồng thời
+      if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.message?.includes('Duplicate entry')) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được giữ tồn kho trước đó (Idempotent race detected)',
+          idempotent: true,
+        };
+      }
       throw err;
     } finally {
       await queryRunner.release();
@@ -183,20 +202,7 @@ export class InventoryController {
     await queryRunner.startTransaction();
 
     try {
-      // KIỂM TRA IDEMPOTENCY: Nếu đã OUT kho theo reference_id này, bỏ qua không trừ lần hai
-      if (referenceId) {
-        const existingTx = await queryRunner.manager.findOne(StockTransaction, {
-          where: { reference_id: referenceId, type: TransactionType.OUT },
-        });
-        if (existingTx) {
-          await queryRunner.rollbackTransaction();
-          return {
-            success: true,
-            message: 'Đơn hàng đã được xác nhận trừ kho trước đó (Idempotent)',
-            idempotent: true,
-          };
-        }
-      }
+      let alreadyHandledCount = 0;
 
       for (const item of items) {
         const stock = await queryRunner.manager.findOne(Stock, {
@@ -206,6 +212,21 @@ export class InventoryController {
 
         if (!stock) {
           throw new BadRequestException(`Sản phẩm ID ${item.productId} không có trong kho`);
+        }
+
+        // KIỂM TRA IDEMPOTENCY SAU KHI ĐÃ LOCK PESSIMISTIC_WRITE
+        if (referenceId) {
+          const existingTx = await queryRunner.manager.findOne(StockTransaction, {
+            where: {
+              reference_id: referenceId,
+              stock_id: stock.id,
+              type: TransactionType.OUT,
+            },
+          });
+          if (existingTx) {
+            alreadyHandledCount++;
+            continue;
+          }
         }
 
         if (stock.reserved_quantity < item.quantity) {
@@ -228,9 +249,25 @@ export class InventoryController {
       }
 
       await queryRunner.commitTransaction();
+
+      if (alreadyHandledCount === items.length && items.length > 0) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được xác nhận trừ kho trước đó (Idempotent)',
+          idempotent: true,
+        };
+      }
+
       return { success: true, message: 'Đã trừ tồn kho chính thức thành công', idempotent: false };
-    } catch (err) {
+    } catch (err: any) {
       await queryRunner.rollbackTransaction();
+      if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.message?.includes('Duplicate entry')) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được xác nhận trừ kho trước đó (Idempotent race detected)',
+          idempotent: true,
+        };
+      }
       throw err;
     } finally {
       await queryRunner.release();
@@ -249,26 +286,28 @@ export class InventoryController {
     await queryRunner.startTransaction();
 
     try {
-      // KIỂM TRA IDEMPOTENCY: Nếu đã CANCEL_RESERVE theo reference_id này, không hoàn lại lần hai
-      if (referenceId) {
-        const existingTx = await queryRunner.manager.findOne(StockTransaction, {
-          where: { reference_id: referenceId, type: TransactionType.CANCEL_RESERVE },
-        });
-        if (existingTx) {
-          await queryRunner.rollbackTransaction();
-          return {
-            success: true,
-            message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent)',
-            idempotent: true,
-          };
-        }
-      }
+      let alreadyHandledCount = 0;
 
       for (const item of items) {
         const stock = await queryRunner.manager.findOne(Stock, {
           where: { branch_id: branchId, product_id: item.productId },
           lock: { mode: 'pessimistic_write' },
         });
+
+        // KIỂM TRA IDEMPOTENCY SAU KHI ĐÃ LOCK PESSIMISTIC_WRITE
+        if (referenceId && stock) {
+          const existingTx = await queryRunner.manager.findOne(StockTransaction, {
+            where: {
+              reference_id: referenceId,
+              stock_id: stock.id,
+              type: TransactionType.CANCEL_RESERVE,
+            },
+          });
+          if (existingTx) {
+            alreadyHandledCount++;
+            continue;
+          }
+        }
 
         if (stock && stock.reserved_quantity >= item.quantity) {
           stock.reserved_quantity -= item.quantity;
@@ -286,9 +325,25 @@ export class InventoryController {
       }
 
       await queryRunner.commitTransaction();
+
+      if (alreadyHandledCount === items.length && items.length > 0) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent)',
+          idempotent: true,
+        };
+      }
+
       return { success: true, message: 'Đã giải phóng (release) hàng giữ tạm thành công', idempotent: false };
-    } catch (err) {
+    } catch (err: any) {
       await queryRunner.rollbackTransaction();
+      if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.message?.includes('Duplicate entry')) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent race detected)',
+          idempotent: true,
+        };
+      }
       throw err;
     } finally {
       await queryRunner.release();
