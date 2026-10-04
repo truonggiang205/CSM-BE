@@ -16,7 +16,7 @@ const SERVICE_MAP: Record<string, string> = {
 };
 
 function isPublicEndpoint(method: string, path: string): boolean {
-  const normPath = path.replace(/^\/api\/v1/, '');
+  const normPath = '/' + path.replace(/^\/?(api\/v1\/)?/, '');
   const m = method.toUpperCase();
 
   // 1. Auth public endpoints
@@ -45,7 +45,8 @@ export class ProxyController {
 
   @All('*')
   async handleProxy(@Req() req: Request, @Res() res: Response) {
-    const pathParts = req.path.replace(/^\/api\/v1\//, '').split('/');
+    const cleanPath = req.path.replace(/^\/?(api\/v1\/)?/, '');
+    const pathParts = cleanPath.split('/');
     const targetKey = pathParts[0];
     const targetBaseUrl = SERVICE_MAP[targetKey];
 
