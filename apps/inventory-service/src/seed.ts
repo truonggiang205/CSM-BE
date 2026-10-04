@@ -16,18 +16,27 @@ if (!process.env.INVENTORY_DB_URL) {
 const seedBranches = [
   {
     id: 'br-01',
-    name: 'Chi nhánh Quận 1 (Bến Nghé)',
-    address: '123 Lê Lợi, Bến Nghé, Quận 1, TP.HCM',
+    name: 'CSM Bến Nghé - Quận 1',
+    address: '123 Lê Lợi, Phường Bến Nghé, Quận 1, TP.HCM',
+    phone: '028.3822.0001',
+    latitude: 10.7719600,
+    longitude: 106.7001400,
   },
   {
     id: 'br-02',
-    name: 'Chi nhánh Quận 7 (Phú Mỹ Hưng)',
-    address: '456 Nguyễn Lương Bằng, Tân Phú, Quận 7, TP.HCM',
+    name: 'CSM Phú Mỹ Hưng - Quận 7',
+    address: '456 Nguyễn Lương Bằng, Phường Tân Phú, Quận 7, TP.HCM',
+    phone: '028.5413.0002',
+    latitude: 10.7295000,
+    longitude: 106.7218000,
   },
   {
     id: 'br-03',
-    name: 'Chi nhánh Bình Thạnh (Hàng Xanh)',
-    address: '789 Điện Biên Phủ, Phường 25, Bình Thạnh, TP.HCM',
+    name: 'CSM Hàng Xanh - Bình Thạnh',
+    address: '789 Điện Biên Phủ, Phường 25, Quận Bình Thạnh, TP.HCM',
+    phone: '028.3512.0003',
+    latitude: 10.8016000,
+    longitude: 106.7118000,
   },
 ];
 
@@ -60,6 +69,10 @@ async function runSeed() {
     } else {
       existing.name = b.name;
       existing.address = b.address;
+      existing.phone = b.phone;
+      existing.latitude = b.latitude;
+      existing.longitude = b.longitude;
+      existing.is_active = true;
       await branchRepo.save(existing);
       console.log(`Updated branch: ${b.id}`);
     }
