@@ -23,7 +23,13 @@ export class OrderController {
     private readonly orderItemRepository: Repository<OrderItem>,
   ) {}
 
+  @Get('health')
+  getHealth() {
+    return { status: 'ok', service: 'order-service' };
+  }
+
   @UseGuards(JwtAuthGuard)
+
   @Post()
   async createOrder(@Req() req: any, @Body() dto: CreateOrderDto) {
     const { branchId, items, shippingAddress, paymentMethod } = dto;

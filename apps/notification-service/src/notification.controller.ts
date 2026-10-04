@@ -1,8 +1,14 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Get, Body } from '@nestjs/common';
 
 @Controller('notifications')
 export class NotificationController {
+  @Get('health')
+  getHealth() {
+    return { status: 'ok', service: 'notification-service' };
+  }
+
   @Post('events')
+
   handleEvent(@Body() body: { event: string, payload: any }) {
     if (body.event === 'order_created') {
       console.log(`[NotificationService] NHẬN EVENT: ${body.event}`);

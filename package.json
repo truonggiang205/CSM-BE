@@ -9,8 +9,13 @@
     "start:product": "cd apps/product-service && npm run start:dev",
     "start:inventory": "cd apps/inventory-service && npm run start:dev",
     "start:order": "cd apps/order-service && npm run start:dev",
-    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:auth\" \"npm run start:product\" \"npm run start:inventory\" \"npm run start:order\""
+    "start:payment": "cd apps/payment-service && npm run start:dev",
+    "start:notification": "cd apps/notification-service && npm run start:dev",
+    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:auth\" \"npm run start:product\" \"npm run start:inventory\" \"npm run start:order\" \"npm run start:payment\" \"npm run start:notification\"",
+    "seed": "npm --prefix apps/auth-service run seed && ts-node scripts/seed-data.ts"
   },
+
+
   "keywords": [
     "microservices",
     "nestjs",

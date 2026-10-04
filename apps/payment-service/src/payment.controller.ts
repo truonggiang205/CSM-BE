@@ -1,8 +1,14 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Get, Body } from '@nestjs/common';
 
 @Controller('payments')
 export class PaymentController {
+  @Get('health')
+  getHealth() {
+    return { status: 'ok', service: 'payment-service' };
+  }
+
   @Post('create')
+
   createPayment(@Body() body: { orderId: string, amount: number, method: string }) {
     console.log(`[PaymentService] Yêu cầu tạo thanh toán cho Order: ${body.orderId}, Method: ${body.method}`);
     

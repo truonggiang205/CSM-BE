@@ -19,6 +19,10 @@ function isPublicEndpoint(method: string, path: string): boolean {
   const normPath = '/' + path.replace(/^\/?(api\/v1\/)?/, '');
   const m = method.toUpperCase();
 
+  if (normPath === '/health') {
+    return true;
+  }
+
   // 1. Auth public endpoints
   if (normPath.startsWith('/auth/register') || normPath.startsWith('/auth/login') || normPath.startsWith('/auth/refresh')) {
     return true;
@@ -42,6 +46,12 @@ function isPublicEndpoint(method: string, path: string): boolean {
 @Controller()
 export class ProxyController {
   constructor(private readonly jwtService: JwtService) {}
+
+  @All('health')
+  getHealth() {
+    return { status: 'ok', service: 'api-gateway' };
+  }
+
 
   @All('*')
   async handleProxy(@Req() req: Request, @Res() res: Response) {
