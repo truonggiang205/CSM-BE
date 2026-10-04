@@ -6,8 +6,15 @@ import { Branch } from './entities/branch.entity';
 import { StockTransaction, TransactionType } from './entities/stock-transaction.entity';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
+import {
+  AddStockDto,
+  ReserveStockDto,
+  ConfirmDeductStockDto,
+  ReleaseStockDto,
+} from './dto/stock-operation.dto';
 
 @Controller('inventory')
+
 @UseGuards(RolesGuard)
 export class InventoryController {
   constructor(
@@ -69,9 +76,7 @@ export class InventoryController {
   // Dành cho Admin hoặc Branch Manager: Nhập thêm tồn kho
   @Roles('ADMIN', 'BRANCH_MANAGER')
   @Post('add-stock')
-  async addStock(
-    @Body() body: { branchId: string; productId: string; quantity: number; referenceId?: string },
-  ) {
+  async addStock(@Body() body: AddStockDto) {
     const { branchId, productId, quantity, referenceId } = body;
     const queryRunner = this.dataSource.createQueryRunner();
 
@@ -118,10 +123,9 @@ export class InventoryController {
 
   // 1. SAGA - Bước 1: Giữ hàng tạm thời (Reserve Stock) - Idempotent theo referenceId + stock_id
   @Post('reserve-stock')
-  async reserveStock(
-    @Body() body: { branchId: string; items: Array<{ productId: string; quantity: number }>; referenceId?: string },
-  ) {
+  async reserveStock(@Body() body: ReserveStockDto) {
     const { branchId, items, referenceId } = body;
+
     const queryRunner = this.dataSource.createQueryRunner();
 
     await queryRunner.connect();
@@ -206,9 +210,7 @@ export class InventoryController {
 
   // 2. SAGA - Bước 2: Xác nhận thanh toán thành công, trừ kho chính thức (Confirm Deduct) - Idempotent
   @Post('confirm-deduct')
-  async confirmDeductStock(
-    @Body() body: { branchId: string; items: Array<{ productId: string; quantity: number }>; referenceId?: string },
-  ) {
+  async confirmDeductStock(@Body() body: ConfirmDeductStockDto) {
     const { branchId, items, referenceId } = body;
     const queryRunner = this.dataSource.createQueryRunner();
 
@@ -290,10 +292,9 @@ export class InventoryController {
 
   // 3. SAGA - Rollback: Hủy giữ hàng (Release Stock) - Idempotent
   @Post('release-stock')
-  async releaseStock(
-    @Body() body: { branchId: string; items: Array<{ productId: string; quantity: number }>; referenceId?: string },
-  ) {
+  async releaseStock(@Body() body: ReleaseStockDto) {
     const { branchId, items, referenceId } = body;
+
     const queryRunner = this.dataSource.createQueryRunner();
 
     await queryRunner.connect();
