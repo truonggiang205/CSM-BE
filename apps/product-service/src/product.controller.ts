@@ -1,10 +1,13 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, NotFoundException, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { Category } from './entities/category.entity';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
 
 @Controller()
+@UseGuards(RolesGuard)
 export class ProductController {
   constructor(
     @InjectRepository(Product)
@@ -20,18 +23,21 @@ export class ProductController {
     return this.categoryRepository.find();
   }
 
+  @Roles('ADMIN')
   @Post('categories')
   async createCategory(@Body() body: { name: string; description?: string }) {
     const category = this.categoryRepository.create(body);
     return this.categoryRepository.save(category);
   }
 
+  @Roles('ADMIN')
   @Put('categories/:id')
   async updateCategory(@Param('id') id: string, @Body() body: { name?: string; description?: string }) {
     await this.categoryRepository.update(id, body);
     return this.categoryRepository.findOne({ where: { id } });
   }
 
+  @Roles('ADMIN')
   @Delete('categories/:id')
   async deleteCategory(@Param('id') id: string) {
     await this.categoryRepository.delete(id);
@@ -57,6 +63,7 @@ export class ProductController {
     return product;
   }
 
+  @Roles('ADMIN')
   @Post('products')
   async createProduct(@Body() body: { sku: string; name: string; description?: string; base_price: number; image_url?: string; category_id?: string }) {
     let category = null;
@@ -72,6 +79,7 @@ export class ProductController {
     return this.productRepository.save(product);
   }
 
+  @Roles('ADMIN')
   @Put('products/:id')
   async updateProduct(@Param('id') id: string, @Body() body: { sku?: string; name?: string; description?: string; base_price?: number; image_url?: string; category_id?: string | null }) {
     const product = await this.productRepository.findOne({ where: { id } });
@@ -98,6 +106,7 @@ export class ProductController {
     return this.productRepository.save(product);
   }
 
+  @Roles('ADMIN')
   @Delete('products/:id')
   async deleteProduct(@Param('id') id: string) {
     await this.productRepository.delete(id);

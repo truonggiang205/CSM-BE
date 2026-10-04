@@ -26,8 +26,12 @@ import { JwtModule } from '@nestjs/jwt';
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([Order, OrderItem]),
-    JwtModule.register({
-      secret: 'super-secret',
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET') || 'csm-super-secret-key-production-change-me',
+      }),
+      inject: [ConfigService],
     }),
   ],
   controllers: [OrderController],
