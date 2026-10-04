@@ -61,6 +61,12 @@ export class ProxyController {
       host: new URL(targetBaseUrl).host,
     };
 
+    // BẢO MẬT CHỐNG GIẢ MẠO: Xoá tuyệt đối mọi header x-user-* do client gửi lên (cả route công khai)
+    delete headers['x-user-id'];
+    delete headers['x-user-email'];
+    delete headers['x-user-role'];
+    delete headers['x-branch-id'];
+
     const isPublic = isPublicEndpoint(req.method, req.path);
     const authHeader = req.headers.authorization;
 
@@ -71,6 +77,11 @@ export class ProxyController {
           secret: process.env.JWT_SECRET || 'csm-super-secret-key-production-change-me',
         });
 
+        // Chỉ chấp nhận token loại access, từ chối refresh token dùng làm bearer auth
+        if (payload.type && payload.type !== 'access') {
+          throw new Error('Loại token không hợp lệ (không phải access token)');
+        }
+
         // Chuyển tiếp định danh an toàn xuống các downstream microservices
         headers['x-user-id'] = payload.sub || payload.id;
         headers['x-user-email'] = payload.email || '';
@@ -80,7 +91,7 @@ export class ProxyController {
         if (!isPublic) {
           return res.status(HttpStatus.UNAUTHORIZED).json({
             statusCode: HttpStatus.UNAUTHORIZED,
-            message: 'Token xác thực không hợp lệ hoặc đã hết hạn',
+            message: 'Token xác thực không hợp lệ, không đúng loại hoặc đã hết hạn',
           });
         }
       }
