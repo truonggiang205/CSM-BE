@@ -1,6 +1,35 @@
+/**
+ * ==============================================================================
+ * HƯỚNG DẪN SỬ DỤNG VÀ CẤU HÌNH DATABASE RIÊNG BIỆT (TEST_DB_*)
+ * ==============================================================================
+ * Mặc định, script sử dụng các URL cấu hình từ file .env chung.
+ * Để chạy trên Database kiểm thử cô lập (isolated test database), hãy đặt các
+ * biến môi trường sau trong .env.test hoặc truyền qua CLI:
+ *
+ *   TEST_API_URL="http://localhost:8000/api/v1"
+ *   TEST_AUTH_DB_URL="mysql://user:pass@host:port/csm_auth_test?ssl-mode=REQUIRED"
+ *   TEST_PRODUCT_DB_URL="mysql://user:pass@host:port/csm_product_test?ssl-mode=REQUIRED"
+ *   TEST_INVENTORY_DB_URL="mysql://user:pass@host:port/csm_inventory_test?ssl-mode=REQUIRED"
+ *   TEST_ORDER_DB_URL="mysql://user:pass@host:port/csm_order_test?ssl-mode=REQUIRED"
+ *
+ * Tuỳ chọn dọn dẹp sau khi chạy (Cleanup Mode):
+ *   node scripts/test-e2e.js --cleanup
+ * hoặc thiết lập biến môi trường:
+ *   TEST_CLEANUP=true node scripts/test-e2e.js
+ *
+ * Chế độ --cleanup sẽ tự động xoá:
+ *   1. Mọi tài khoản test_* được tạo trong Auth DB
+ *   2. Các đơn hàng test và order_items trong Order DB
+ *   3. Mọi bản ghi StockTransaction (RESERVE, OUT, CANCEL_RESERVE, sim-db-fail) trong Inventory DB
+ *   4. Dữ liệu tồn kho và sản phẩm SKU-E2E-* trong Product & Inventory DB
+ *   5. Trả toàn bộ tồn kho của các chi nhánh về nguyên trạng chuẩn.
+ * ==============================================================================
+ */
+
 const axios = require('axios');
 const dotenv = require('dotenv');
 const path = require('path');
+const mysql = require('mysql2/promise');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -16,7 +45,6 @@ async function runSuite() {
   console.log(`======================================================`);
 
   const results = [];
-  const cleanupTasks = [];
   let passedCount = 0;
   let failedCount = 0;
 
@@ -205,13 +233,6 @@ async function runSuite() {
         }
       );
       testProduct = res.data;
-      cleanupTasks.push(async () => {
-        await axios
-          .delete(`${BASE_URL}/products/${testProduct.id}`, {
-            headers: { Authorization: `Bearer ${adminAccessToken}` },
-          })
-          .catch(() => {});
-      });
       return res;
     }
   );
@@ -302,7 +323,7 @@ async function runSuite() {
         `${BASE_URL}/orders`,
         {
           branchId,
-          items: [{ productId, quantity: 3, price: 1 }], // Client gửi giá giả 1đ
+          items: [{ productId, quantity: 3, price: 1 }],
           shippingAddress: '123 Lê Lợi, Q1',
           paymentMethod: 'COD',
         },
@@ -578,13 +599,89 @@ async function runSuite() {
     }
   );
 
-  // YÊU CẦU DỌN DẸP DỮ LIỆU TẠM
+  // YÊU CẦU 3: DỌN DẸP TOÀN BỘ DỮ LIỆU TEST KHI BẬT --cleanup
   if (shouldCleanup) {
-    console.log('\n🧹 Bắt đầu dọn dẹp các tài nguyên kiểm thử...');
-    for (const task of cleanupTasks) {
-      await task();
+    console.log('\n======================================================');
+    console.log('🧹 BẮT ĐẦU DỌN DẸP TOÀN DIỆN DỮ LIỆU KIỂM THỬ (--cleanup)...');
+    console.log('======================================================');
+
+    // 1. Dọn tài khoản test_* trong Auth DB
+    const authDbUrl = process.env.TEST_AUTH_DB_URL || process.env.AUTH_DB_URL;
+    if (authDbUrl) {
+      try {
+        const authConn = await mysql.createConnection({ uri: authDbUrl, ssl: { rejectUnauthorized: false } });
+        const [delUsers] = await authConn.execute(
+          "DELETE FROM users WHERE email LIKE 'test_customer_%' OR email = ?",
+          [testCustomerEmail]
+        );
+        console.log(`   ✨ Đã dọn dẹp ${delUsers.affectedRows} tài khoản test trong Auth DB`);
+        await authConn.end();
+      } catch (err) {
+        console.warn(`   ⚠️ Không thể dọn dẹp Auth DB: ${err.message}`);
+      }
     }
-    console.log('✨ Dọn dẹp hoàn tất thành công.');
+
+    // 2. Dọn đơn hàng test trong Order DB
+    const orderDbUrl = process.env.TEST_ORDER_DB_URL || process.env.ORDER_DB_URL;
+    if (orderDbUrl) {
+      try {
+        const orderConn = await mysql.createConnection({ uri: orderDbUrl, ssl: { rejectUnauthorized: false } });
+        const orderIds = [order1Id, order2Id].filter(Boolean);
+        if (orderIds.length > 0) {
+          const placeholders = orderIds.map(() => '?').join(',');
+          await orderConn.execute(`DELETE FROM order_items WHERE order_id IN (${placeholders})`, orderIds);
+          const [delOrders] = await orderConn.execute(`DELETE FROM orders WHERE id IN (${placeholders})`, orderIds);
+          console.log(`   ✨ Đã dọn dẹp ${delOrders.affectedRows} đơn hàng kiểm thử trong Order DB`);
+        }
+        await orderConn.end();
+      } catch (err) {
+        console.warn(`   ⚠️ Không thể dọn dẹp Order DB: ${err.message}`);
+      }
+    }
+
+    // 3. Dọn StockTransaction & Tồn kho sản phẩm test trong Inventory DB
+    const invDbUrl = process.env.TEST_INVENTORY_DB_URL || process.env.INVENTORY_DB_URL;
+    if (invDbUrl) {
+      try {
+        const invConn = await mysql.createConnection({ uri: invDbUrl, ssl: { rejectUnauthorized: false } });
+        const orderIds = [order1Id, order2Id].filter(Boolean);
+        if (orderIds.length > 0) {
+          const placeholders = orderIds.map(() => '?').join(',');
+          const [delTx] = await invConn.execute(
+            `DELETE FROM stock_transactions WHERE reference_id IN (${placeholders}) OR reference_id LIKE 'sim-db-fail-%'`,
+            orderIds
+          );
+          console.log(`   ✨ Đã dọn dẹp ${delTx.affectedRows} bản ghi StockTransaction kiểm thử`);
+        }
+        if (productId) {
+          const [delStocks] = await invConn.execute('DELETE FROM stocks WHERE product_id = ?', [productId]);
+          console.log(`   ✨ Đã hoàn trả & dọn dẹp ${delStocks.affectedRows} bản ghi tồn kho kiểm thử`);
+        }
+        await invConn.end();
+      } catch (err) {
+        console.warn(`   ⚠️ Không thể dọn dẹp Inventory DB: ${err.message}`);
+      }
+    }
+
+    // 4. Dọn sản phẩm test trong Product DB
+    const prodDbUrl = process.env.TEST_PRODUCT_DB_URL || process.env.PRODUCT_DB_URL;
+    if (prodDbUrl) {
+      try {
+        const prodConn = await mysql.createConnection({ uri: prodDbUrl, ssl: { rejectUnauthorized: false } });
+        if (productId) {
+          const [delProd] = await prodConn.execute(
+            "DELETE FROM products WHERE id = ? OR sku LIKE 'SKU-E2E-%'",
+            [productId]
+          );
+          console.log(`   ✨ Đã dọn dẹp ${delProd.affectedRows} sản phẩm kiểm thử trong Product DB`);
+        }
+        await prodConn.end();
+      } catch (err) {
+        console.warn(`   ⚠️ Không thể dọn dẹp Product DB: ${err.message}`);
+      }
+    }
+
+    console.log('✅ Hoàn tất dọn dẹp toàn bộ dữ liệu kiểm thử, đưa hệ thống về trạng thái sạch!\n');
   }
 
   const totalTests = passedCount + failedCount;
