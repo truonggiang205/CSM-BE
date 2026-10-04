@@ -6,7 +6,7 @@ import axios from 'axios';
 const SERVICE_MAP: Record<string, string> = {
   auth: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
   products: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
-  branches: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
+  branches: process.env.INVENTORY_SERVICE_URL || 'http://localhost:3003',
   inventory: process.env.INVENTORY_SERVICE_URL || 'http://localhost:3003',
   orders: process.env.ORDER_SERVICE_URL || 'http://localhost:3004',
 };
