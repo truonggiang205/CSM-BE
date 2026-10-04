@@ -9,7 +9,13 @@ import { RefreshDto } from './dto/refresh.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Get('health')
+  getHealth() {
+    return { status: 'ok', service: 'auth-service' };
+  }
+
   @Post('register')
+
   register(@Body() body: RegisterDto) {
     return this.authService.register(body);
   }

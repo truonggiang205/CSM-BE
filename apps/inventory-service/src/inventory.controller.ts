@@ -27,7 +27,13 @@ export class InventoryController {
     private readonly dataSource: DataSource,
   ) {}
 
+  @Get('health')
+  getHealth() {
+    return { status: 'ok', service: 'inventory-service' };
+  }
+
   @Get('transactions')
+
   async getTransactions(
     @Query('referenceId') referenceId?: string,
     @Query('stockId') stockId?: string,

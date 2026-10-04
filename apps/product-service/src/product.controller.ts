@@ -20,7 +20,13 @@ export class ProductController {
     private readonly categoryRepository: Repository<Category>,
   ) {}
 
+  @Get('health')
+  getHealth() {
+    return { status: 'ok', service: 'product-service' };
+  }
+
   // --- CATEGORY CRUD ---
+
 
   @Get('categories')
   async getAllCategories() {
