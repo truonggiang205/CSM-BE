@@ -39,7 +39,20 @@ export class OrderController {
       throw new HttpException('Đơn hàng phải có ít nhất 1 sản phẩm', HttpStatus.BAD_REQUEST);
     }
 
-    // --- BƯỚC 0: XÁC THỰC GIÁ VÀ TÊN TỪ PRODUCT SERVICE (KHÔNG TIN GIÁ/TÊN BODY GỬI LÊN) ---
+    // --- BƯỚC 0.1: XÁC THỰC CHI NHÁNH TỒN TẠI (INVENTORY SERVICE) ---
+    try {
+      const bRes = await axios.get(`${INVENTORY_SERVICE_URL}/branches/${branchId}`);
+      if (!bRes.data || !bRes.data.id) {
+        throw new Error('Branch not found');
+      }
+    } catch {
+      throw new HttpException(
+        `Chi nhánh với ID '${branchId}' không tồn tại trong hệ thống`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // --- BƯỚC 0.2: XÁC THỰC GIÁ VÀ TÊN TỪ PRODUCT SERVICE (KHÔNG TIN GIÁ/TÊN BODY GỬI LÊN) ---
     const verifiedItems = await Promise.all(
       items.map(async (item) => {
         try {
@@ -182,8 +195,8 @@ export class OrderController {
     }
 
     // 1. Kiểm tra quyền hạn người dùng trước (CUSTOMER chỉ được huỷ PENDING đơn của mình)
-    const internalSecret = process.env.INTERNAL_SERVICE_SECRET || 'csm-internal-secret-2026';
-    const isInternalCall = req.headers['x-internal-secret'] === internalSecret;
+    const internalSecret = process.env.INTERNAL_SECRET;
+    const isInternalCall = Boolean(internalSecret && req.headers['x-internal-secret'] === internalSecret);
 
     if (!isInternalCall) {
       const user = req.user;
