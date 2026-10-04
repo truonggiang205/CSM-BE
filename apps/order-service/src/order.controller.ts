@@ -8,12 +8,13 @@ import { OrderItem } from './entities/order-item.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:3003';
+const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
 const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005';
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006';
 
 interface CreateOrderDto {
   branchId: string | number;
-  items: Array<{ productId: string | number; quantity: number; price: number; productName: string }>;
+  items: Array<{ productId: string | number; quantity: number; price?: number; productName?: string }>;
   shippingAddress: string;
   paymentMethod: string;
 }
@@ -38,13 +39,38 @@ export class OrderController {
       throw new HttpException('Đơn hàng phải có ít nhất 1 sản phẩm', HttpStatus.BAD_REQUEST);
     }
 
+    // --- BƯỚC 0: XÁC THỰC GIÁ VÀ TÊN TỪ PRODUCT SERVICE (KHÔNG TIN GIÁ/TÊN BODY GỬI LÊN) ---
+    const verifiedItems = await Promise.all(
+      items.map(async (item) => {
+        try {
+          const pRes = await axios.get(`${PRODUCT_SERVICE_URL}/products/${item.productId}`);
+          const product = pRes.data;
+          if (!product || !product.id) {
+            throw new Error('Not found');
+          }
+          const price = Number(product.base_price) || 0;
+          return {
+            productId: product.id.toString(),
+            productName: product.name,
+            price: price,
+            quantity: Number(item.quantity) || 1,
+          };
+        } catch {
+          throw new HttpException(
+            `Sản phẩm ID ${item.productId} không tồn tại trong hệ thống`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }),
+    );
+
     // --- BƯỚC 1: SAGA - GIỮ HÀNG TỒN KHO TẠM THỜI (RESERVE STOCK) ---
     try {
       console.log(`[OrderService] Gọi Inventory Service (${INVENTORY_SERVICE_URL}) để giữ kho (reserve-stock)...`);
       const reserveRes = await axios.post(`${INVENTORY_SERVICE_URL}/inventory/reserve-stock`, {
         branchId: branchId.toString(),
         referenceId: orderId,
-        items: items.map(i => ({ productId: i.productId.toString(), quantity: i.quantity })),
+        items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
       });
 
       if (!reserveRes.data.success) {
@@ -57,8 +83,8 @@ export class OrderController {
       );
     }
 
-    // --- BƯỚC 2: TẠO ĐƠN HÀNG VÀ LƯU DATABASE (STATUS: PENDING) ---
-    const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    // --- BƯỚC 2: TẠO ĐƠN HÀNG VÀ LƯU DATABASE (STATUS: PENDING, GIÁ CHUẨN TỪ SERVER) ---
+    const totalAmount = verifiedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
     let savedOrder: Order;
 
     try {
@@ -70,9 +96,9 @@ export class OrderController {
         status: OrderStatus.PENDING,
       });
 
-      // Tạo các OrderItems
-      order.items = items.map(item => this.orderItemRepository.create({
-        product_id: item.productId.toString(),
+      // Tạo các OrderItems từ thông tin đã được server xác thực
+      order.items = verifiedItems.map(item => this.orderItemRepository.create({
+        product_id: item.productId,
         product_name_snapshot: item.productName,
         price_snapshot: item.price,
         quantity: item.quantity,
@@ -87,7 +113,7 @@ export class OrderController {
         await axios.post(`${INVENTORY_SERVICE_URL}/inventory/release-stock`, {
           branchId: branchId.toString(),
           referenceId: orderId,
-          items: items.map(i => ({ productId: i.productId.toString(), quantity: i.quantity })),
+          items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
         });
       } catch (rollbackError) {
         console.error(`[CRITICAL] Rollback tồn kho thất bại! Cần can thiệp thủ công.`, rollbackError);
