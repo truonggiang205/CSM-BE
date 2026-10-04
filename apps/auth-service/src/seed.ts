@@ -4,7 +4,13 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { User, UserRole } from './entities/user.entity';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+if (!process.env.AUTH_DB_URL) {
+  dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
+}
+if (!process.env.AUTH_DB_URL) {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+}
 
 const seedUsers = [
   {
