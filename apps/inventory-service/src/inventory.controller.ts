@@ -2,12 +2,15 @@ import { Controller, Get, Post, Param, Body, BadRequestException } from '@nestjs
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Stock } from './entities/stock.entity';
+import { Branch } from './entities/branch.entity';
 
 @Controller('inventory')
 export class InventoryController {
   constructor(
     @InjectRepository(Stock)
     private readonly stockRepository: Repository<Stock>,
+    @InjectRepository(Branch)
+    private readonly branchRepository: Repository<Branch>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -16,6 +19,31 @@ export class InventoryController {
     return this.stockRepository.find({
       where: { branch_id: branchId },
       // relations: ['branch'], // Uncomment if needed
+    });
+  }
+
+  @Get('product/:productId')
+  async getStockByProduct(@Param('productId') productId: string) {
+    const branches = await this.branchRepository.find({ order: { name: 'ASC' } });
+    const stocks = await this.stockRepository.find({
+      where: { product_id: productId },
+    });
+    const stockMap = new Map(stocks.map((s) => [s.branch_id, s]));
+
+    return branches.map((b) => {
+      const s = stockMap.get(b.id);
+      const quantity = s ? s.quantity : 0;
+      const reserved_quantity = s ? s.reserved_quantity : 0;
+      const available = Math.max(0, quantity - reserved_quantity);
+
+      return {
+        branch_id: b.id,
+        branch_name: b.name,
+        branch_address: b.address || '',
+        quantity,
+        reserved_quantity,
+        available,
+      };
     });
   }
 
