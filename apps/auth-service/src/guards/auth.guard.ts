@@ -17,10 +17,16 @@ export class AuthGuard implements CanActivate {
       const payload = this.jwtService.verify(token, {
         secret: process.env.JWT_SECRET || 'csm-super-secret-key-production-change-me',
       });
+
+      // Từ chối refresh token khi dùng làm access bearer token
+      if (payload.type && payload.type !== 'access') {
+        throw new UnauthorizedException('Token không phải là access token (từ chối refresh token)');
+      }
+
       req.user = payload;
       return true;
     } catch {
-      throw new UnauthorizedException('Token không hợp lệ hoặc đã hết hạn');
+      throw new UnauthorizedException('Token không hợp lệ, không đúng loại hoặc đã hết hạn');
     }
   }
 }
