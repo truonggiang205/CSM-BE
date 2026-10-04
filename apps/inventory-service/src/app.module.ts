@@ -6,6 +6,8 @@ import { Branch } from './entities/branch.entity';
 import { Stock } from './entities/stock.entity';
 import { StockTransaction } from './entities/stock-transaction.entity';
 
+import { BranchController } from './branch.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -27,7 +29,7 @@ import { StockTransaction } from './entities/stock-transaction.entity';
     }),
     TypeOrmModule.forFeature([Branch, Stock, StockTransaction]),
   ],
-  controllers: [InventoryController],
+  controllers: [InventoryController, BranchController],
   providers: [],
 })
 export class AppModule {}
