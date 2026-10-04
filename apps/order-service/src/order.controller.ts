@@ -181,24 +181,7 @@ export class OrderController {
       return order;
     }
 
-    // 1. Kiểm tra bảng chuyển trạng thái hợp lệ
-    const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-      [OrderStatus.CONFIRMED]: [OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-      [OrderStatus.PAID]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-      [OrderStatus.SHIPPED]: [OrderStatus.CANCELLED],
-      [OrderStatus.CANCELLED]: [],
-    };
-
-    const allowedNextStatuses = VALID_TRANSITIONS[oldStatus] || [];
-    if (!allowedNextStatuses.includes(newStatus)) {
-      throw new HttpException(
-        `Chuyển trạng thái không hợp lệ: Không thể chuyển từ ${oldStatus} sang ${newStatus}`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    // 2. Kiểm tra quyền hạn chuyển trạng thái
+    // 1. Kiểm tra quyền hạn người dùng trước (CUSTOMER chỉ được huỷ PENDING đơn của mình)
     const internalSecret = process.env.INTERNAL_SERVICE_SECRET || 'csm-internal-secret-2026';
     const isInternalCall = req.headers['x-internal-secret'] === internalSecret;
 
@@ -217,7 +200,10 @@ export class OrderController {
         if (order.user_id !== userId) {
           throw new HttpException('Bạn không có quyền can thiệp vào đơn hàng của người khác', HttpStatus.FORBIDDEN);
         }
-        if (newStatus !== OrderStatus.CANCELLED || oldStatus !== OrderStatus.PENDING) {
+        if (newStatus !== OrderStatus.CANCELLED) {
+          throw new HttpException('Khách hàng không có quyền chuyển sang trạng thái này', HttpStatus.FORBIDDEN);
+        }
+        if (oldStatus !== OrderStatus.PENDING) {
           throw new HttpException(
             'Khách hàng chỉ có quyền huỷ đơn hàng khi đơn còn ở trạng thái PENDING',
             HttpStatus.FORBIDDEN,
@@ -234,6 +220,23 @@ export class OrderController {
       } else if (userRole !== 'ADMIN' && userRole !== 'STAFF') {
         throw new HttpException('Bạn không có quyền thực hiện thao tác này', HttpStatus.FORBIDDEN);
       }
+    }
+
+    // 2. Kiểm tra bảng chuyển trạng thái hợp lệ
+    const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+      [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+      [OrderStatus.CONFIRMED]: [OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.CANCELLED],
+      [OrderStatus.PAID]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
+      [OrderStatus.SHIPPED]: [OrderStatus.CANCELLED],
+      [OrderStatus.CANCELLED]: [],
+    };
+
+    const allowedNextStatuses = VALID_TRANSITIONS[oldStatus] || [];
+    if (!allowedNextStatuses.includes(newStatus)) {
+      throw new HttpException(
+        `Chuyển trạng thái không hợp lệ: Không thể chuyển từ ${oldStatus} sang ${newStatus}`,
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     // 3. Thực thi Saga tương ứng với điều kiện nghiêm ngặt
