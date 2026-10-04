@@ -19,11 +19,14 @@ import { User } from './entities/user.entity';
         type: 'mysql',
         url: configService.get<string>('AUTH_DB_URL'),
         entities: [User],
-        synchronize: true, // Use only in dev. In prod, use migrations.
-        ssl: {
-          rejectUnauthorized: false, // Required by Aiven MySQL
-        },
+        synchronize:
+          configService.get<string>('NODE_ENV') === 'development' ||
+          configService.get<string>('DB_SYNC') === 'true',
+        ssl: configService.get<string>('AUTH_DB_URL')?.includes('ssl-mode=REQUIRED')
+          ? { rejectUnauthorized: false }
+          : false,
       }),
+
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([User]),
