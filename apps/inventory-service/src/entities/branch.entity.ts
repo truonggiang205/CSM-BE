@@ -12,6 +12,36 @@ export class Branch {
   @Column({ nullable: true })
   address: string;
 
+  @Column({ nullable: true })
+  phone: string;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 7,
+    nullable: true,
+    transformer: {
+      to: (value?: number | null) => value,
+      from: (value?: string | null) => (value !== null && value !== undefined ? parseFloat(value) : null),
+    },
+  })
+  latitude: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 7,
+    nullable: true,
+    transformer: {
+      to: (value?: number | null) => value,
+      from: (value?: string | null) => (value !== null && value !== undefined ? parseFloat(value) : null),
+    },
+  })
+  longitude: number | null;
+
+  @Column({ default: true })
+  is_active: boolean;
+
   @OneToMany(() => Stock, (stock) => stock.branch)
   stocks: Stock[];
 
@@ -21,3 +51,4 @@ export class Branch {
   @UpdateDateColumn()
   updated_at: Date;
 }
+
