@@ -7,17 +7,12 @@ import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
+import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
+
 const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:3003';
 const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
 const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005';
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006';
-
-interface CreateOrderDto {
-  branchId: string | number;
-  items: Array<{ productId: string | number; quantity: number; price?: number; productName?: string }>;
-  shippingAddress: string;
-  paymentMethod: string;
-}
 
 @Controller('orders')
 export class OrderController {
@@ -175,7 +170,7 @@ export class OrderController {
   @Patch(':id/status')
   async updateOrderStatus(
     @Param('id') id: string,
-    @Body() body: { status: OrderStatus },
+    @Body() body: UpdateOrderStatusDto,
     @Req() req: any,
   ) {
     const order = await this.orderRepository.findOne({
