@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, BadRequestException, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, BadRequestException, UseGuards, Query } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Stock } from './entities/stock.entity';
@@ -19,6 +19,20 @@ export class InventoryController {
     private readonly stockTxRepository: Repository<StockTransaction>,
     private readonly dataSource: DataSource,
   ) {}
+
+  @Get('transactions')
+  async getTransactions(
+    @Query('referenceId') referenceId?: string,
+    @Query('stockId') stockId?: string,
+  ) {
+    const where: any = {};
+    if (referenceId) where.reference_id = referenceId;
+    if (stockId) where.stock_id = stockId;
+    return this.stockTxRepository.find({
+      where,
+      order: { created_at: 'ASC' },
+    });
+  }
 
   @Get('branch/:branchId')
   async getInventoryByBranch(@Param('branchId') branchId: string) {

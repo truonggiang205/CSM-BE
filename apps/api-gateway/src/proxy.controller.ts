@@ -103,7 +103,7 @@ export class ProxyController {
       });
     }
 
-    const targetUrl = `${targetBaseUrl}${req.originalUrl.replace('/api/v1', '')}`;
+    const targetUrl = `${targetBaseUrl}/${cleanPath}`;
 
     try {
       const response = await axios({
