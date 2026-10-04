@@ -45,7 +45,7 @@ services:
       PORT: 3001
       NODE_ENV: ${NODE_ENV:-development}
       DB_SYNC: ${DB_SYNC:-true}
-      AUTH_DB_URL: mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_auth
+      AUTH_DB_URL: ${AUTH_DB_URL:-mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_auth}
       JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-access-token-key-32chars}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-super-secret-jwt-refresh-token-key-32chars}
     ports:
@@ -75,7 +75,7 @@ services:
       PORT: 3002
       NODE_ENV: ${NODE_ENV:-development}
       DB_SYNC: ${DB_SYNC:-true}
-      PRODUCT_DB_URL: mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_product
+      PRODUCT_DB_URL: ${PRODUCT_DB_URL:-mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_product}
     ports:
       - "3002:3002"
     depends_on:
@@ -103,7 +103,7 @@ services:
       PORT: 3003
       NODE_ENV: ${NODE_ENV:-development}
       DB_SYNC: ${DB_SYNC:-true}
-      INVENTORY_DB_URL: mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_inventory
+      INVENTORY_DB_URL: ${INVENTORY_DB_URL:-mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_inventory}
       ORDER_SERVICE_URL: http://order-service:3004
       INTERNAL_SECRET: ${INTERNAL_SECRET:-csm-super-secure-internal-secret-token}
     ports:
@@ -133,7 +133,8 @@ services:
       PORT: 3004
       NODE_ENV: ${NODE_ENV:-development}
       DB_SYNC: ${DB_SYNC:-true}
-      ORDER_DB_URL: mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_order
+      ORDER_DB_URL: ${ORDER_DB_URL:-mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_order}
+
       INVENTORY_SERVICE_URL: http://inventory-service:3003
       PRODUCT_SERVICE_URL: http://product-service:3002
       PAYMENT_SERVICE_URL: http://payment-service:3005
