@@ -132,10 +132,12 @@ export class OrderController {
   }
 
   // --- CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG (SAGA CONFIRM HOẶC CANCEL) ---
+  @UseGuards(JwtAuthGuard)
   @Patch(':id/status')
   async updateOrderStatus(
     @Param('id') id: string,
     @Body() body: { status: OrderStatus },
+    @Req() req: any,
   ) {
     const order = await this.orderRepository.findOne({
       where: { id },
@@ -153,7 +155,63 @@ export class OrderController {
       return order;
     }
 
-    // Khi chuyển sang CONFIRMED hoặc PAID: Xác nhận trừ kho vĩnh viễn (confirm-deduct)
+    // 1. Kiểm tra bảng chuyển trạng thái hợp lệ
+    const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+      [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+      [OrderStatus.CONFIRMED]: [OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.CANCELLED],
+      [OrderStatus.PAID]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
+      [OrderStatus.SHIPPED]: [OrderStatus.CANCELLED],
+      [OrderStatus.CANCELLED]: [],
+    };
+
+    const allowedNextStatuses = VALID_TRANSITIONS[oldStatus] || [];
+    if (!allowedNextStatuses.includes(newStatus)) {
+      throw new HttpException(
+        `Chuyển trạng thái không hợp lệ: Không thể chuyển từ ${oldStatus} sang ${newStatus}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // 2. Kiểm tra quyền hạn chuyển trạng thái
+    const internalSecret = process.env.INTERNAL_SERVICE_SECRET || 'csm-internal-secret-2026';
+    const isInternalCall = req.headers['x-internal-secret'] === internalSecret;
+
+    if (!isInternalCall) {
+      const user = req.user;
+      const userRole = user?.role;
+      const userId = user?.id || user?.sub;
+      const userBranchId = user?.branch_id;
+
+      if (!userRole) {
+        throw new HttpException('Không xác định được danh tính người dùng', HttpStatus.UNAUTHORIZED);
+      }
+
+      // Khách hàng (CUSTOMER): CHỈ được phép chuyển PENDING -> CANCELLED cho đơn hàng của chính mình
+      if (userRole === 'CUSTOMER') {
+        if (order.user_id !== userId) {
+          throw new HttpException('Bạn không có quyền can thiệp vào đơn hàng của người khác', HttpStatus.FORBIDDEN);
+        }
+        if (newStatus !== OrderStatus.CANCELLED || oldStatus !== OrderStatus.PENDING) {
+          throw new HttpException(
+            'Khách hàng chỉ có quyền huỷ đơn hàng khi đơn còn ở trạng thái PENDING',
+            HttpStatus.FORBIDDEN,
+          );
+        }
+      } else if (userRole === 'BRANCH_MANAGER') {
+        // Quản lý chi nhánh chỉ được thao tác trên đơn hàng thuộc chi nhánh mình phụ trách
+        if (userBranchId && order.branch_id.toString() !== userBranchId.toString()) {
+          throw new HttpException(
+            'Quản lý chi nhánh chỉ được cập nhật đơn hàng thuộc chi nhánh của mình',
+            HttpStatus.FORBIDDEN,
+          );
+        }
+      } else if (userRole !== 'ADMIN' && userRole !== 'STAFF') {
+        throw new HttpException('Bạn không có quyền thực hiện thao tác này', HttpStatus.FORBIDDEN);
+      }
+    }
+
+    // 3. Thực thi Saga tương ứng với điều kiện nghiêm ngặt
+    // Chỉ confirm-deduct khi chuyển từ PENDING sang CONFIRMED hoặc PAID (chỉ làm 1 lần duy nhất)
     if (oldStatus === OrderStatus.PENDING && (newStatus === OrderStatus.CONFIRMED || newStatus === OrderStatus.PAID)) {
       try {
         console.log(`[OrderService] Đơn hàng ${order.id} được xác nhận, gọi confirm-deduct...`);
@@ -173,10 +231,10 @@ export class OrderController {
       }
     }
 
-    // Khi huỷ đơn hàng đang PENDING: Hoàn trả số lượng đã giữ (release-stock)
+    // Chỉ release-stock khi huỷ đơn hàng ĐANG PENDING (chưa confirm-deduct kho)
     if (oldStatus === OrderStatus.PENDING && newStatus === OrderStatus.CANCELLED) {
       try {
-        console.log(`[OrderService] Đơn hàng ${order.id} bị huỷ, gọi release-stock...`);
+        console.log(`[OrderService] Đơn hàng ${order.id} huỷ khi đang PENDING, gọi release-stock...`);
         await axios.post(`${INVENTORY_SERVICE_URL}/inventory/release-stock`, {
           branchId: order.branch_id,
           referenceId: order.id,
