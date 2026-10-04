@@ -319,6 +319,17 @@ export class OrderController {
     });
   }
 
+  @Get('branch/:branchId/active-count')
+  async getActiveOrdersCount(@Param('branchId') branchId: string) {
+    const count = await this.orderRepository.count({
+      where: [
+        { branch_id: branchId, status: OrderStatus.PENDING },
+        { branch_id: branchId, status: OrderStatus.CONFIRMED },
+      ],
+    });
+    return { branchId, count };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get(':id')
   async getOrderById(@Param('id') id: string) {
