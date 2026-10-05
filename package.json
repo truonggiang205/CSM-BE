@@ -15,9 +15,6 @@
     "seed": "npm --prefix apps/auth-service run seed && ts-node scripts/seed-data.ts",
     "test": "jest --runInBand"
   },
-
-
-
   "keywords": [
     "microservices",
     "nestjs",
@@ -56,6 +53,7 @@
     "concurrently": "^10.0.5",
     "jest": "^30.5.2",
     "ts-jest": "^29.4.14",
+    "ts-node": "^10.9.2",
     "typescript": "^5.1.3"
   }
 }
