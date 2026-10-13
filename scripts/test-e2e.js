@@ -181,6 +181,24 @@ async function runSuite() {
     }
   );
 
+  // 3b. Đăng nhập BRANCH_MANAGER (seed account br-01)
+  let managerAccessToken = '';
+  await testCase(
+    '3b. Đăng nhập BRANCH_MANAGER (seed account br-01)',
+    {
+      expectedStatus: 201,
+      assertFn: (d) => !!d.accessToken && d.user?.role === 'BRANCH_MANAGER',
+    },
+    async () => {
+      const res = await axios.post(`${BASE_URL}/auth/login`, {
+        email: 'manager.q1@csm.vn',
+        password: 'Manager@123456',
+      });
+      managerAccessToken = res.data.accessToken;
+      return res;
+    }
+  );
+
   // 4. Refresh token bằng Refresh Token hợp lệ
   await testCase(
     '4. Refresh token bằng Refresh Token hợp lệ',
@@ -599,6 +617,161 @@ async function runSuite() {
     }
   );
 
+  // ============================================================================
+  // GIAI ĐOẠN 1: BỔ SUNG API TRUY VẤN ĐƠN HÀNG (CSM-29) & KIỂM THỬ PHÂN QUYỀN
+  // ============================================================================
+
+  // Test: GET /orders/my - Khách hàng lấy danh sách đơn của chính mình
+  await testCase(
+    'CSM-29 [1.1]: GET /orders/my - Trả về đơn của khách hàng dạng { items, total, page, limit }',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => Array.isArray(d.items) && typeof d.total === 'number' && d.page === 1 && d.limit === 10 && d.items.length >= 1,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders/my?page=1&limit=10`, {
+        headers: { Authorization: `Bearer ${customerAccessToken}` },
+      });
+    }
+  );
+
+  // Test: GET /orders/my?status=CONFIRMED - Lọc theo trạng thái hợp lệ
+  await testCase(
+    'CSM-29 [1.1]: GET /orders/my?status=CONFIRMED - Lọc theo trạng thái thành công',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => Array.isArray(d.items) && d.items.every((o) => o.status === 'CONFIRMED'),
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders/my?status=CONFIRMED`, {
+        headers: { Authorization: `Bearer ${customerAccessToken}` },
+      });
+    }
+  );
+
+  // Test: GET /orders/my?status=INVALID_STATUS - Từ chối 400 Bad Request
+  await testCase(
+    'CSM-29 [1.5]: GET /orders/my?status=INVALID_STATUS - Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders/my?status=INVALID_STATUS`, {
+        headers: { Authorization: `Bearer ${customerAccessToken}` },
+      });
+    }
+  );
+
+  // Test: GET /orders - CUSTOMER gọi vào danh sách quản trị -> Phải bị từ chối 403 Forbidden
+  await testCase(
+    'CSM-29 [1.2]: GET /orders - CUSTOMER gọi danh sách quản trị -> Bị từ chối 403 Forbidden',
+    {
+      expectedStatus: 403,
+      assertFn: (d) => d.statusCode === 403,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders`, {
+        headers: { Authorization: `Bearer ${customerAccessToken}` },
+      });
+    }
+  );
+
+  // Test: GET /orders?branchId=br-02 - BRANCH_MANAGER bị ép theo chi nhánh của mình (br-01), bỏ qua branchId client gửi
+  await testCase(
+    'CSM-29 [1.2]: GET /orders - BRANCH_MANAGER bị khóa phạm vi chi nhánh (br-01)',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => Array.isArray(d.items) && d.items.every((o) => o.branch_id === 'br-01'),
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders?branchId=br-02`, {
+        headers: { Authorization: `Bearer ${managerAccessToken}` },
+      });
+    }
+  );
+
+  // Test: GET /orders - ADMIN xem được toàn bộ danh sách đơn dạng { items, total, page, limit }
+  await testCase(
+    'CSM-29 [1.2]: GET /orders - ADMIN xem toàn bộ đơn kèm phân trang { items, total, page, limit }',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => Array.isArray(d.items) && typeof d.total === 'number' && d.total >= 1,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders?page=1&limit=10`, {
+        headers: { Authorization: `Bearer ${adminAccessToken}` },
+      });
+    }
+  );
+
+  // Test: GET /orders/:id - CUSTOMER xem đơn của người khác -> Bị từ chối 403 Forbidden
+  await testCase(
+    'CSM-29 [1.4]: GET /orders/:id - CUSTOMER xem đơn người khác -> Bị từ chối 403 Forbidden',
+    {
+      expectedStatus: 403,
+      assertFn: (d) => d.statusCode === 403,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders/${order1Id}`, {
+        headers: { Authorization: `Bearer ${newCustomerToken}` },
+      });
+    }
+  );
+
+  // Test: GET /orders/:id - CUSTOMER xem đơn của chính mình -> Thành công 200 OK
+  await testCase(
+    'CSM-29 [1.4]: GET /orders/:id - CUSTOMER xem đơn của chính mình -> Thành công 200 OK',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => d.id === order1Id && Array.isArray(d.items),
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders/${order1Id}`, {
+        headers: { Authorization: `Bearer ${customerAccessToken}` },
+      });
+    }
+  );
+
+  // ============================================================================
+  // GIAI ĐOẠN 2: KIỂM THỬ LUỒNG THANH TOÁN MÔ PHỎNG (PAYMENT SIMULATION)
+  // ============================================================================
+  let orderOnlineId = '';
+  await testCase(
+    'Giai đoạn 2 [2.1]: Tạo đơn hàng online MOMO nhận link thanh toán mô phỏng',
+    {
+      expectedStatus: 201,
+      assertFn: (d) => !!d.orderId && !!d.paymentUrl && d.status === 'PENDING',
+    },
+    async () => {
+      const res = await axios.post(
+        `${BASE_URL}/orders`,
+        {
+          branchId,
+          items: [{ productId, quantity: 2 }],
+          shippingAddress: '789 Nguyễn Huệ, Q1',
+          paymentMethod: 'MOMO',
+        },
+        { headers: { Authorization: `Bearer ${customerAccessToken}` } }
+      );
+      orderOnlineId = res.data.orderId;
+      return res;
+    }
+  );
+
+  await testCase(
+    'Giai đoạn 2 [2.2]: Kích hoạt mô phỏng thanh toán online -> Đơn chuyển CONFIRMED & PAID và trừ kho',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => d.success === true && d.status === 'PAID',
+    },
+    async () => {
+      return await axios.post(`${BASE_URL}/payments/simulate-success`, {
+        orderId: orderOnlineId,
+      });
+    }
+  );
+
   // YÊU CẦU 3: DỌN DẸP TOÀN BỘ DỮ LIỆU TEST KHI BẬT --cleanup
   if (shouldCleanup) {
     console.log('\n======================================================');
@@ -626,7 +799,7 @@ async function runSuite() {
     if (orderDbUrl) {
       try {
         const orderConn = await mysql.createConnection({ uri: orderDbUrl, ssl: { rejectUnauthorized: false } });
-        const orderIds = [order1Id, order2Id].filter(Boolean);
+        const orderIds = [order1Id, order2Id, orderOnlineId].filter(Boolean);
         if (orderIds.length > 0) {
           const placeholders = orderIds.map(() => '?').join(',');
           await orderConn.execute(`DELETE FROM order_items WHERE order_id IN (${placeholders})`, orderIds);
