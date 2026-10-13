@@ -18,16 +18,23 @@ import { JwtModule } from '@nestjs/jwt';
         type: 'mysql',
         url: configService.get<string>('ORDER_DB_URL'),
         entities: [Order, OrderItem],
-        synchronize: true, // Use only in dev
-        ssl: {
-          rejectUnauthorized: false, // Required by Aiven MySQL
-        },
+        synchronize:
+          configService.get<string>('NODE_ENV') === 'development' ||
+          configService.get<string>('DB_SYNC') === 'true',
+        ssl: configService.get<string>('ORDER_DB_URL')?.includes('ssl-mode=REQUIRED')
+          ? { rejectUnauthorized: false }
+          : false,
       }),
+
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([Order, OrderItem]),
-    JwtModule.register({
-      secret: 'super-secret',
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET') || 'csm-super-secret-key-production-change-me',
+      }),
+      inject: [ConfigService],
     }),
   ],
   controllers: [OrderController],

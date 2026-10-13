@@ -9,7 +9,11 @@
     "start:product": "cd apps/product-service && npm run start:dev",
     "start:inventory": "cd apps/inventory-service && npm run start:dev",
     "start:order": "cd apps/order-service && npm run start:dev",
-    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:auth\" \"npm run start:product\" \"npm run start:inventory\" \"npm run start:order\""
+    "start:payment": "cd apps/payment-service && npm run start:dev",
+    "start:notification": "cd apps/notification-service && npm run start:dev",
+    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:auth\" \"npm run start:product\" \"npm run start:inventory\" \"npm run start:order\" \"npm run start:payment\" \"npm run start:notification\"",
+    "seed": "npm --prefix apps/auth-service run seed && ts-node scripts/seed-data.ts",
+    "test": "jest --runInBand"
   },
   "keywords": [
     "microservices",
@@ -31,6 +35,8 @@
     "@nestjs/typeorm": "^10.0.2",
     "axios": "^1.7.7",
     "bcrypt": "^5.1.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
     "mysql2": "^3.11.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
@@ -39,10 +45,15 @@
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
     "@nestjs/schematics": "^10.0.0",
+    "@nestjs/testing": "^10.0.0",
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^4.17.17",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.3.1",
     "concurrently": "^10.0.5",
+    "jest": "^30.5.2",
+    "ts-jest": "^29.4.14",
+    "ts-node": "^10.9.2",
     "typescript": "^5.1.3"
   }
 }
