@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, HttpException, HttpStatus, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, HttpException, HttpStatus, UseGuards, Req } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -8,6 +8,7 @@ import { OrderItem } from './entities/order-item.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
+import { QueryOrderDto, QueryMyOrderDto } from './dto/query-order.dto';
 
 const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:3003';
 const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
@@ -296,28 +297,97 @@ export class OrderController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get()
-  async getAllOrders(@Req() req: any) {
-    const user = req.user;
-    // Phân quyền dữ liệu theo vai trò nếu có
-    if (user?.role === 'CUSTOMER') {
-      return await this.orderRepository.find({
-        where: { user_id: user.id || user.sub },
-        relations: ['items'],
-        order: { created_at: 'DESC' },
-      });
+  @Get('my')
+  async getMyOrders(@Req() req: any, @Query() query: QueryMyOrderDto) {
+    const userId = req.user?.id || req.user?.sub || req.headers['x-user-id'];
+    if (!userId) {
+      throw new HttpException('Không xác định được danh tính người dùng', HttpStatus.UNAUTHORIZED);
     }
-    if (user?.role === 'BRANCH_MANAGER' && user?.branch_id) {
-      return await this.orderRepository.find({
-        where: { branch_id: user.branch_id },
-        relations: ['items'],
-        order: { created_at: 'DESC' },
-      });
+
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(query.limit) || 10));
+    const skip = (page - 1) * limit;
+
+    const where: any = { user_id: userId.toString() };
+    if (query.status) {
+      where.status = query.status;
     }
-    return await this.orderRepository.find({
+
+    const [items, total] = await this.orderRepository.findAndCount({
+      where,
       relations: ['items'],
       order: { created_at: 'DESC' },
+      skip,
+      take: limit,
     });
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get()
+  async getAllOrders(@Req() req: any, @Query() query: QueryOrderDto) {
+    const internalSecret = process.env.INTERNAL_SECRET;
+    const isInternalCall = Boolean(internalSecret && req.headers['x-internal-secret'] === internalSecret);
+
+    const user = req.user;
+    const userRole = isInternalCall ? 'ADMIN' : user?.role;
+    const userBranchId = user?.branch_id;
+
+    if (userRole === 'CUSTOMER') {
+      throw new HttpException('Khách hàng không có quyền truy cập danh sách đơn hàng quản trị', HttpStatus.FORBIDDEN);
+    }
+
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(query.limit) || 10));
+    const skip = (page - 1) * limit;
+
+    const qb = this.orderRepository.createQueryBuilder('order')
+      .leftJoinAndSelect('order.items', 'items');
+
+    // Phân quyền chi nhánh
+    if (userRole === 'BRANCH_MANAGER' || userRole === 'STAFF') {
+      if (!userBranchId) {
+        throw new HttpException('Nhân viên chưa được phân công chi nhánh quản lý', HttpStatus.FORBIDDEN);
+      }
+      // Luôn ép theo chi nhánh của mình, bỏ qua branchId client gửi
+      qb.andWhere('order.branch_id = :userBranch', { userBranch: userBranchId.toString() });
+    } else if (userRole === 'ADMIN' || userRole === 'SYSTEM') {
+      // ADMIN xem được tất cả, nếu có lọc theo branchId thì áp dụng
+      if (query.branchId) {
+        qb.andWhere('order.branch_id = :filterBranch', { filterBranch: query.branchId.toString() });
+      }
+    } else {
+      throw new HttpException('Bạn không có quyền truy cập danh sách đơn hàng', HttpStatus.FORBIDDEN);
+    }
+
+    // Lọc theo trạng thái
+    if (query.status) {
+      qb.andWhere('order.status = :status', { status: query.status });
+    }
+
+    // Tìm kiếm theo ID đơn hàng
+    if (query.search && query.search.trim()) {
+      qb.andWhere('order.id LIKE :search', { search: `%${query.search.trim()}%` });
+    }
+
+    qb.orderBy('order.created_at', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+    };
   }
 
   @Get('branch/:branchId/active-count')
@@ -333,9 +403,32 @@ export class OrderController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id')
-  async getOrderById(@Param('id') id: string) {
+  async getOrderById(@Param('id') id: string, @Req() req: any) {
     const found = await this.orderRepository.findOne({ where: { id }, relations: ['items'] });
     if (!found) throw new HttpException('Không tìm thấy đơn hàng', HttpStatus.NOT_FOUND);
+
+    const internalSecret = process.env.INTERNAL_SECRET;
+    const isInternalCall = Boolean(internalSecret && req.headers['x-internal-secret'] === internalSecret);
+
+    if (!isInternalCall) {
+      const user = req.user;
+      const userRole = user?.role;
+      const userId = user?.id || user?.sub;
+      const userBranchId = user?.branch_id;
+
+      if (userRole === 'CUSTOMER') {
+        if (found.user_id !== userId) {
+          throw new HttpException('Bạn không có quyền xem đơn hàng của người khác', HttpStatus.FORBIDDEN);
+        }
+      } else if (userRole === 'BRANCH_MANAGER' || userRole === 'STAFF') {
+        if (userBranchId && found.branch_id.toString() !== userBranchId.toString()) {
+          throw new HttpException('Nhân viên chỉ được xem đơn hàng thuộc chi nhánh của mình', HttpStatus.FORBIDDEN);
+        }
+      } else if (userRole !== 'ADMIN' && userRole !== 'SYSTEM') {
+        throw new HttpException('Bạn không có quyền xem đơn hàng này', HttpStatus.FORBIDDEN);
+      }
+    }
+
     return found;
   }
 }
