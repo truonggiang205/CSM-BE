@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, Index } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 
 export enum OrderStatus {
@@ -10,6 +10,10 @@ export enum OrderStatus {
 }
 
 @Entity('orders')
+@Index(['user_id'])
+@Index(['branch_id'])
+@Index(['status'])
+@Index(['created_at'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;
