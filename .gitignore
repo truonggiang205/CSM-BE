@@ -25,3 +25,6 @@ build/
 # Docker data volume
 docker-data/
 *.log
+
+.env.cloud
+.env.local
