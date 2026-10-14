@@ -30,10 +30,12 @@ const axios = require('axios');
 const dotenv = require('dotenv');
 const path = require('path');
 const mysql = require('mysql2/promise');
+const jwt = require('jsonwebtoken');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:8000/api/v1';
+const PAYMENT_SIMULATION_SECRET = process.env.PAYMENT_SIMULATION_SECRET || 'csm-payment-simulation-secret-key-2026';
 const shouldCleanup = process.argv.includes('--cleanup') || process.env.TEST_CLEANUP === 'true';
 
 async function runSuite() {
@@ -734,14 +736,27 @@ async function runSuite() {
   );
 
   // ============================================================================
-  // GIAI ĐOẠN 2: KIỂM THỬ LUỒNG THANH TOÁN MÔ PHỎNG (PAYMENT SIMULATION)
+  // GIAI ĐOẠN 2: KIỂM THỬ LUỒNG THANH TOÁN MÔ PHỎNG (PAYMENT SIMULATION BẢO MẬT)
   // ============================================================================
   let orderOnlineId = '';
+  let onlineToken = '';
+  let orderCodId = '';
+
+  // 2.1: Tạo đơn hàng online MOMO nhận link thanh toán mô phỏng chứa JWT token
   await testCase(
-    'Giai đoạn 2 [2.1]: Tạo đơn hàng online MOMO nhận link thanh toán mô phỏng',
+    'Giai đoạn 2 [2.1]: Tạo đơn hàng online MOMO nhận link thanh toán mô phỏng chứa token JWT 10 phút',
     {
       expectedStatus: 201,
-      assertFn: (d) => !!d.orderId && !!d.paymentUrl && d.status === 'PENDING',
+      assertFn: (d) => {
+        if (!d.orderId || !d.paymentUrl || d.status !== 'PENDING') return false;
+        try {
+          const url = new URL(d.paymentUrl);
+          onlineToken = url.searchParams.get('token') || '';
+          return url.pathname.includes('/payments/simulate-success') && !!onlineToken;
+        } catch (e) {
+          return false;
+        }
+      },
     },
     async () => {
       const res = await axios.post(
@@ -759,16 +774,233 @@ async function runSuite() {
     }
   );
 
+  // 2.2: GET /payments/simulate-success/:orderId - Trả về HTML xác nhận và KHÔNG đổi trạng thái
   await testCase(
-    'Giai đoạn 2 [2.2]: Kích hoạt mô phỏng thanh toán online -> Đơn chuyển CONFIRMED & PAID và trừ kho',
+    'Giai đoạn 2 [2.2a]: GET /payments/simulate-success/:orderId - Trả về HTML xác nhận và KHÔNG đổi trạng thái đơn',
     {
       expectedStatus: 200,
-      assertFn: (d) => d.success === true && d.status === 'PAID',
+      assertFn: (d) => typeof d === 'string' && d.includes('Mô phỏng Cổng Thanh toán') && d.includes(orderOnlineId),
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/payments/simulate-success/${orderOnlineId}?token=${onlineToken}`);
+    }
+  );
+
+  // Xác nhận sau khi GET HTML, đơn hàng vẫn ở trạng thái PENDING
+  await testCase(
+    'Giai đoạn 2 [2.2b]: Xác nhận sau khi GET HTML mô phỏng, đơn hàng vẫn ở trạng thái PENDING (chưa bị thanh toán)',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => d.id === orderOnlineId && d.status === 'PENDING',
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/orders/${orderOnlineId}`, {
+        headers: { Authorization: `Bearer ${customerAccessToken}` },
+      });
+    }
+  );
+
+  // 2.3: Token sai hoặc hỏng -> Từ chối 401 Unauthorized
+  await testCase(
+    'Giai đoạn 2 [2.3]: Token sai hoặc hỏng -> Từ chối 401 Unauthorized',
+    {
+      expectedStatus: 401,
+      assertFn: (d) => d.statusCode === 401,
     },
     async () => {
       return await axios.post(`${BASE_URL}/payments/simulate-success`, {
         orderId: orderOnlineId,
+        token: 'invalid-corrupted-token-xyz',
       });
+    }
+  );
+
+  // 2.4: Token đã hết hạn -> Từ chối 401 Unauthorized
+  await testCase(
+    'Giai đoạn 2 [2.4]: Token đã hết hạn -> Từ chối 401 Unauthorized',
+    {
+      expectedStatus: 401,
+      assertFn: (d) => d.statusCode === 401,
+    },
+    async () => {
+      const expiredToken = jwt.sign(
+        { orderId: orderOnlineId },
+        PAYMENT_SIMULATION_SECRET,
+        { expiresIn: '-1s' }
+      );
+      return await axios.post(`${BASE_URL}/payments/simulate-success`, {
+        orderId: orderOnlineId,
+        token: expiredToken,
+      });
+    }
+  );
+
+  // 2.5: Token của đơn hàng khác (mismatched) -> Từ chối 403 Forbidden
+  await testCase(
+    'Giai đoạn 2 [2.5]: Token của đơn hàng khác -> Từ chối 403 Forbidden',
+    {
+      expectedStatus: 403,
+      assertFn: (d) => d.statusCode === 403,
+    },
+    async () => {
+      const mismatchedToken = jwt.sign(
+        { orderId: '00000000-0000-0000-0000-000000000000' },
+        PAYMENT_SIMULATION_SECRET,
+        { expiresIn: '10m' }
+      );
+      return await axios.post(`${BASE_URL}/payments/simulate-success`, {
+        orderId: orderOnlineId,
+        token: mismatchedToken,
+      });
+    }
+  );
+
+  // 2.6: Đơn hàng COD -> Từ chối 400 Bad Request
+  await testCase(
+    'Giai đoạn 2 [2.6a]: Tạo đơn hàng COD để kiểm thử bảo mật',
+    {
+      expectedStatus: 201,
+      assertFn: (d) => !!d.orderId && d.status === 'PENDING',
+    },
+    async () => {
+      const res = await axios.post(
+        `${BASE_URL}/orders`,
+        {
+          branchId,
+          items: [{ productId, quantity: 1 }],
+          shippingAddress: '123 COD Street',
+          paymentMethod: 'COD',
+        },
+        { headers: { Authorization: `Bearer ${customerAccessToken}` } }
+      );
+      orderCodId = res.data.orderId;
+      return res;
+    }
+  );
+
+  await testCase(
+    'Giai đoạn 2 [2.6b]: Gọi simulate-success cho đơn hàng COD -> Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      const validCodToken = jwt.sign(
+        { orderId: orderCodId },
+        PAYMENT_SIMULATION_SECRET,
+        { expiresIn: '10m' }
+      );
+      return await axios.post(`${BASE_URL}/payments/simulate-success`, {
+        orderId: orderCodId,
+        token: validCodToken,
+      });
+    }
+  );
+
+  // Ghi nhận tồn kho trước khi thanh toán đơn online MOMO
+  let stockBeforeMomo = 0;
+  await testCase(
+    'Giai đoạn 2 [2.7a]: Ghi nhận tồn kho chi nhánh trước khi thanh toán đơn online MOMO',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => Array.isArray(d) && d.length > 0,
+    },
+    async () => {
+      const res = await axios.get(`${BASE_URL}/inventory/branch/${branchId}`);
+      const item = res.data.find((p) => p.product_id === productId);
+      stockBeforeMomo = item?.quantity || 0;
+      return res;
+    }
+  );
+
+  // 2.7: Kích hoạt mô phỏng thanh toán online LẦN 1 -> Đơn chuyển CONFIRMED & PAID và trừ kho
+  await testCase(
+    'Giai đoạn 2 [2.7b]: Kích hoạt mô phỏng thanh toán online LẦN 1 -> Đơn chuyển CONFIRMED & PAID và trừ kho',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => d.success === true && d.status === 'PAID' && d.idempotent === false,
+    },
+    async () => {
+      return await axios.post(`${BASE_URL}/payments/simulate-success`, {
+        orderId: orderOnlineId,
+        token: onlineToken,
+      });
+    }
+  );
+
+  let stockAfterMomo1 = 0;
+  await testCase(
+    'Giai đoạn 2 [2.7c]: Xác nhận tồn kho thực tế đã bị trừ 2 đơn vị sau LẦN 1 thanh toán thành công',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => {
+        const item = d.find((p) => p.product_id === productId);
+        stockAfterMomo1 = item?.quantity || 0;
+        return stockAfterMomo1 === stockBeforeMomo - 2;
+      },
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/inventory/branch/${branchId}`);
+    }
+  );
+
+  // 2.8: Gọi mô phỏng thanh toán online LẦN 2 (Idempotency) -> Trả về 200 và kho không bị trừ thêm lần 2
+  await testCase(
+    'Giai đoạn 2 [2.8a]: Gọi mô phỏng thanh toán online LẦN 2 (Idempotency) -> Trả về 200 và giữ nguyên trạng thái',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => d.success === true && d.status === 'PAID' && d.idempotent === true,
+    },
+    async () => {
+      return await axios.post(`${BASE_URL}/payments/simulate-success`, {
+        orderId: orderOnlineId,
+        token: onlineToken,
+      });
+    }
+  );
+
+  await testCase(
+    'Giai đoạn 2 [2.8b]: Xác nhận tồn kho KHÔNG bị trừ lần 2 sau khi gọi lại simulate-success',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => {
+        const item = d.find((p) => p.product_id === productId);
+        const stockAfterMomo2 = item?.quantity || 0;
+        return stockAfterMomo2 === stockAfterMomo1;
+      },
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/inventory/branch/${branchId}`);
+    }
+  );
+
+  // 2.9: PAYMENT_SIMULATION=false -> Trả về 404 Not Found
+  await testCase(
+    'Giai đoạn 2 [2.9a]: POST /payments/simulate-success khi PAYMENT_SIMULATION=false -> Trả về 404 Not Found',
+    {
+      expectedStatus: 404,
+      assertFn: (d) => d.statusCode === 404,
+    },
+    async () => {
+      return await axios.post(
+        `${BASE_URL}/payments/simulate-success`,
+        { orderId: orderOnlineId, token: onlineToken },
+        { headers: { 'x-payment-simulation': 'false' } }
+      );
+    }
+  );
+
+  await testCase(
+    'Giai đoạn 2 [2.9b]: GET /payments/simulate-success/:orderId khi PAYMENT_SIMULATION=false -> Trả về 404 Not Found',
+    {
+      expectedStatus: 404,
+      assertFn: (d) => d.statusCode === 404,
+    },
+    async () => {
+      return await axios.get(
+        `${BASE_URL}/payments/simulate-success/${orderOnlineId}?token=${onlineToken}`,
+        { headers: { 'x-payment-simulation': 'false' } }
+      );
     }
   );
 
@@ -799,7 +1031,7 @@ async function runSuite() {
     if (orderDbUrl) {
       try {
         const orderConn = await mysql.createConnection({ uri: orderDbUrl, ssl: { rejectUnauthorized: false } });
-        const orderIds = [order1Id, order2Id, orderOnlineId].filter(Boolean);
+        const orderIds = [order1Id, order2Id, orderOnlineId, orderCodId].filter(Boolean);
         if (orderIds.length > 0) {
           const placeholders = orderIds.map(() => '?').join(',');
           await orderConn.execute(`DELETE FROM order_items WHERE order_id IN (${placeholders})`, orderIds);
