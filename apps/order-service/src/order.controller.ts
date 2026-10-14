@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, HttpException, HttpStatus, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, HttpException, HttpStatus, UseGuards, Req } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -8,6 +8,7 @@ import { OrderItem } from './entities/order-item.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
+import { QueryOrderDto, QueryMyOrderDto } from './dto/query-order.dto';
 
 const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:3003';
 const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
@@ -72,7 +73,7 @@ export class OrderController {
         } catch {
           throw new HttpException(
             `Sản phẩm ID ${item.productId} không tồn tại trong hệ thống`,
-            HttpStatus.BAD_REQUEST,
+            HttpStatus.NOT_FOUND,
           );
         }
       }),
@@ -107,6 +108,7 @@ export class OrderController {
         user_id: userId.toString(),
         branch_id: branchId.toString(),
         total_amount: totalAmount,
+        payment_method: paymentMethod || 'COD',
         status: OrderStatus.PENDING,
       });
 
@@ -139,11 +141,19 @@ export class OrderController {
     let paymentUrl = '';
     if (paymentMethod === 'MOMO' || paymentMethod === 'ZALOPAY' || paymentMethod === 'ATM') {
       try {
-        const paymentRes = await axios.post(`${PAYMENT_SERVICE_URL}/payments/create`, {
-          orderId: savedOrder.id,
-          amount: totalAmount,
-          method: paymentMethod
-        });
+        const paymentRes = await axios.post(
+          `${PAYMENT_SERVICE_URL}/payments/create`,
+          {
+            orderId: savedOrder.id,
+            amount: totalAmount,
+            method: paymentMethod,
+          },
+          {
+            headers: {
+              'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+            },
+          },
+        );
         paymentUrl = paymentRes.data.paymentUrl;
       } catch (paymentErr) {
         console.error(`[OrderService] Lấy link thanh toán thất bại`, paymentErr);
@@ -241,7 +251,7 @@ export class OrderController {
       [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
       [OrderStatus.CONFIRMED]: [OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.CANCELLED],
       [OrderStatus.PAID]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-      [OrderStatus.SHIPPED]: [OrderStatus.CANCELLED],
+      [OrderStatus.SHIPPED]: [],
       [OrderStatus.CANCELLED]: [],
     };
 
@@ -296,28 +306,127 @@ export class OrderController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get()
-  async getAllOrders(@Req() req: any) {
-    const user = req.user;
-    // Phân quyền dữ liệu theo vai trò nếu có
-    if (user?.role === 'CUSTOMER') {
-      return await this.orderRepository.find({
-        where: { user_id: user.id || user.sub },
-        relations: ['items'],
-        order: { created_at: 'DESC' },
-      });
+  @Get('my')
+  async getMyOrders(@Req() req: any, @Query() query: QueryMyOrderDto) {
+    const userId = req.user?.id || req.user?.sub || req.headers['x-user-id'];
+    if (!userId) {
+      throw new HttpException('Không xác định được danh tính người dùng', HttpStatus.UNAUTHORIZED);
     }
-    if (user?.role === 'BRANCH_MANAGER' && user?.branch_id) {
-      return await this.orderRepository.find({
-        where: { branch_id: user.branch_id },
-        relations: ['items'],
-        order: { created_at: 'DESC' },
-      });
+
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(query.limit) || 10));
+    const skip = (page - 1) * limit;
+
+    const where: any = { user_id: userId.toString() };
+    if (query.status) {
+      where.status = query.status;
     }
-    return await this.orderRepository.find({
+
+    const [items, total] = await this.orderRepository.findAndCount({
+      where,
       relations: ['items'],
       order: { created_at: 'DESC' },
+      skip,
+      take: limit,
     });
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get()
+  async getAllOrders(@Req() req: any, @Query() query: QueryOrderDto) {
+    const internalSecret = process.env.INTERNAL_SECRET;
+    const isInternalCall = Boolean(internalSecret && req.headers['x-internal-secret'] === internalSecret);
+
+    const user = req.user;
+    const userRole = isInternalCall ? 'ADMIN' : user?.role;
+    const userBranchId = user?.branch_id;
+
+    if (userRole === 'CUSTOMER') {
+      throw new HttpException('Khách hàng không có quyền truy cập danh sách đơn hàng quản trị', HttpStatus.FORBIDDEN);
+    }
+
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(query.limit) || 10));
+    const skip = (page - 1) * limit;
+
+    const qb = this.orderRepository.createQueryBuilder('order')
+      .leftJoinAndSelect('order.items', 'items');
+
+    // Phân quyền chi nhánh
+    if (userRole === 'BRANCH_MANAGER' || userRole === 'STAFF') {
+      if (!userBranchId) {
+        throw new HttpException('Nhân viên chưa được phân công chi nhánh quản lý', HttpStatus.FORBIDDEN);
+      }
+      // Luôn ép theo chi nhánh của mình, bỏ qua branchId client gửi
+      qb.andWhere('order.branch_id = :userBranch', { userBranch: userBranchId.toString() });
+    } else if (userRole === 'ADMIN' || userRole === 'SYSTEM') {
+      // ADMIN xem được tất cả, nếu có lọc theo branchId thì áp dụng
+      if (query.branchId) {
+        qb.andWhere('order.branch_id = :filterBranch', { filterBranch: query.branchId.toString() });
+      }
+    } else {
+      throw new HttpException('Bạn không có quyền truy cập danh sách đơn hàng', HttpStatus.FORBIDDEN);
+    }
+
+    // Lọc theo trạng thái
+    if (query.status) {
+      qb.andWhere('order.status = :status', { status: query.status });
+    }
+
+    // Tìm kiếm theo ID đơn hàng
+    if (query.search && query.search.trim()) {
+      qb.andWhere('order.id LIKE :search', { search: `%${query.search.trim()}%` });
+    }
+
+    // Lọc theo khoảng ngày tạo đơn
+    if (query.fromDate) {
+      const fromTimestamp = Date.parse(query.fromDate);
+      if (isNaN(fromTimestamp)) {
+        throw new HttpException('Khoảng ngày không hợp lệ: fromDate sai định dạng', HttpStatus.BAD_REQUEST);
+      }
+    }
+    if (query.toDate) {
+      const toTimestamp = Date.parse(query.toDate);
+      if (isNaN(toTimestamp)) {
+        throw new HttpException('Khoảng ngày không hợp lệ: toDate sai định dạng', HttpStatus.BAD_REQUEST);
+      }
+    }
+    if (query.fromDate && query.toDate) {
+      if (new Date(query.fromDate) > new Date(query.toDate)) {
+        throw new HttpException('Khoảng ngày không hợp lệ: fromDate phải trước hoặc bằng toDate', HttpStatus.BAD_REQUEST);
+      }
+    }
+    if (query.fromDate) {
+      qb.andWhere('order.created_at >= :fromDate', { fromDate: new Date(query.fromDate) });
+    }
+    if (query.toDate) {
+      qb.andWhere('order.created_at <= :toDate', { toDate: new Date(query.toDate) });
+    }
+
+    qb.orderBy('order.created_at', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   @Get('branch/:branchId/active-count')
@@ -333,9 +442,32 @@ export class OrderController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id')
-  async getOrderById(@Param('id') id: string) {
+  async getOrderById(@Param('id') id: string, @Req() req: any) {
     const found = await this.orderRepository.findOne({ where: { id }, relations: ['items'] });
     if (!found) throw new HttpException('Không tìm thấy đơn hàng', HttpStatus.NOT_FOUND);
+
+    const internalSecret = process.env.INTERNAL_SECRET;
+    const isInternalCall = Boolean(internalSecret && req.headers['x-internal-secret'] === internalSecret);
+
+    if (!isInternalCall) {
+      const user = req.user;
+      const userRole = user?.role;
+      const userId = user?.id || user?.sub;
+      const userBranchId = user?.branch_id;
+
+      if (userRole === 'CUSTOMER') {
+        if (found.user_id !== userId) {
+          throw new HttpException('Bạn không có quyền xem đơn hàng của người khác', HttpStatus.FORBIDDEN);
+        }
+      } else if (userRole === 'BRANCH_MANAGER' || userRole === 'STAFF') {
+        if (userBranchId && found.branch_id.toString() !== userBranchId.toString()) {
+          throw new HttpException('Nhân viên chỉ được xem đơn hàng thuộc chi nhánh của mình', HttpStatus.FORBIDDEN);
+        }
+      } else if (userRole !== 'ADMIN' && userRole !== 'SYSTEM') {
+        throw new HttpException('Bạn không có quyền xem đơn hàng này', HttpStatus.FORBIDDEN);
+      }
+    }
+
     return found;
   }
 }

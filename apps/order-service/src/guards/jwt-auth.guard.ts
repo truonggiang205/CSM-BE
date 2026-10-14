@@ -8,6 +8,18 @@ export class JwtAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
 
+    // 0. Hỗ trợ cuộc gọi nội bộ an toàn giữa các microservices qua x-internal-secret
+    const internalSecret = process.env.INTERNAL_SECRET;
+    if (internalSecret && request.headers['x-internal-secret'] === internalSecret) {
+      request.user = {
+        id: 'internal-system',
+        sub: 'internal-system',
+        email: 'system@internal.csm.vn',
+        role: 'SYSTEM',
+      };
+      return true;
+    }
+
     // 1. Nhận thông tin đã được Gateway xác thực qua headers an toàn
     const gatewayUserId = request.headers['x-user-id'];
     const gatewayUserRole = request.headers['x-user-role'];

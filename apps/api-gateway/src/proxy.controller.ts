@@ -40,6 +40,11 @@ function isPublicEndpoint(method: string, path: string): boolean {
     }
   }
 
+  // 3. Payment simulation endpoint (hỗ trợ trình duyệt redirect mô phỏng thanh toán)
+  if (normPath.startsWith('/payments/simulate-success')) {
+    return true;
+  }
+
   return false;
 }
 
@@ -125,7 +130,11 @@ export class ProxyController {
         validateStatus: () => true, // Không throw exception nếu status >= 400
       });
 
-      return res.status(response.status).json(response.data);
+      const contentType = response.headers['content-type'];
+      if (contentType) {
+        res.setHeader('content-type', String(contentType));
+      }
+      return res.status(response.status).send(response.data);
     } catch (error: any) {
       return res.status(HttpStatus.BAD_GATEWAY).json({
         statusCode: HttpStatus.BAD_GATEWAY,
