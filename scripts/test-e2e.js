@@ -104,15 +104,21 @@ async function runSuite() {
       }
     }
 
+    function maskJwt(val) {
+      if (!val) return '';
+      const str = typeof val === 'string' ? val : JSON.stringify(val, null, 2);
+      return str.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, 'eyJ...***');
+    }
+
     if (passed) {
       passedCount++;
       console.log(`\n[PASS] [${actualStatus}] ${name}`);
-      console.log(JSON.stringify(actualData, null, 2).slice(0, 300));
+      console.log(maskJwt(actualData).slice(0, 300));
     } else {
       failedCount++;
       console.log(`\n[FAIL] [${actualStatus}] ${name}`);
       console.log(`   ❌ Lý do: ${failureReason}`);
-      console.log(JSON.stringify(actualData, null, 2).slice(0, 300));
+      console.log(maskJwt(actualData).slice(0, 300));
     }
 
     results.push({ name, passed, status: actualStatus, data: actualData, failureReason });
