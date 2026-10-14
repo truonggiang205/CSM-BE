@@ -27,6 +27,9 @@ export class Order {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   total_amount: number;
 
+  @Column({ type: 'varchar', length: 50, default: 'COD' })
+  payment_method: string;
+
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
   status: OrderStatus;
 

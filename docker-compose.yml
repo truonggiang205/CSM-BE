@@ -167,6 +167,12 @@ services:
     restart: always
     environment:
       PORT: 3005
+      PAYMENT_SIMULATION: ${PAYMENT_SIMULATION:-true}
+      PAYMENT_SIMULATION_SECRET: ${PAYMENT_SIMULATION_SECRET:-csm-payment-simulation-secret-key-2026}
+      ORDER_SERVICE_URL: http://order-service:3004
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-csm-super-secure-internal-secret-token}
+      PUBLIC_GATEWAY_URL: ${PUBLIC_GATEWAY_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - "3005:3005"
     networks:

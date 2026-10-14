@@ -130,7 +130,11 @@ export class ProxyController {
         validateStatus: () => true, // Không throw exception nếu status >= 400
       });
 
-      return res.status(response.status).json(response.data);
+      const contentType = response.headers['content-type'];
+      if (contentType) {
+        res.setHeader('content-type', String(contentType));
+      }
+      return res.status(response.status).send(response.data);
     } catch (error: any) {
       return res.status(HttpStatus.BAD_GATEWAY).json({
         statusCode: HttpStatus.BAD_GATEWAY,

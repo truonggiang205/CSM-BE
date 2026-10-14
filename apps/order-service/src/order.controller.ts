@@ -108,6 +108,7 @@ export class OrderController {
         user_id: userId.toString(),
         branch_id: branchId.toString(),
         total_amount: totalAmount,
+        payment_method: paymentMethod || 'COD',
         status: OrderStatus.PENDING,
       });
 
