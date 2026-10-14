@@ -73,7 +73,7 @@ export class OrderController {
         } catch {
           throw new HttpException(
             `Sản phẩm ID ${item.productId} không tồn tại trong hệ thống`,
-            HttpStatus.BAD_REQUEST,
+            HttpStatus.NOT_FOUND,
           );
         }
       }),
@@ -251,7 +251,7 @@ export class OrderController {
       [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
       [OrderStatus.CONFIRMED]: [OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.CANCELLED],
       [OrderStatus.PAID]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-      [OrderStatus.SHIPPED]: [OrderStatus.CANCELLED],
+      [OrderStatus.SHIPPED]: [],
       [OrderStatus.CANCELLED]: [],
     };
 
@@ -386,6 +386,31 @@ export class OrderController {
     // Tìm kiếm theo ID đơn hàng
     if (query.search && query.search.trim()) {
       qb.andWhere('order.id LIKE :search', { search: `%${query.search.trim()}%` });
+    }
+
+    // Lọc theo khoảng ngày tạo đơn
+    if (query.fromDate) {
+      const fromTimestamp = Date.parse(query.fromDate);
+      if (isNaN(fromTimestamp)) {
+        throw new HttpException('Khoảng ngày không hợp lệ: fromDate sai định dạng', HttpStatus.BAD_REQUEST);
+      }
+    }
+    if (query.toDate) {
+      const toTimestamp = Date.parse(query.toDate);
+      if (isNaN(toTimestamp)) {
+        throw new HttpException('Khoảng ngày không hợp lệ: toDate sai định dạng', HttpStatus.BAD_REQUEST);
+      }
+    }
+    if (query.fromDate && query.toDate) {
+      if (new Date(query.fromDate) > new Date(query.toDate)) {
+        throw new HttpException('Khoảng ngày không hợp lệ: fromDate phải trước hoặc bằng toDate', HttpStatus.BAD_REQUEST);
+      }
+    }
+    if (query.fromDate) {
+      qb.andWhere('order.created_at >= :fromDate', { fromDate: new Date(query.fromDate) });
+    }
+    if (query.toDate) {
+      qb.andWhere('order.created_at <= :toDate', { toDate: new Date(query.toDate) });
     }
 
     qb.orderBy('order.created_at', 'DESC')
