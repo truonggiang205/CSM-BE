@@ -141,11 +141,19 @@ export class OrderController {
     let paymentUrl = '';
     if (paymentMethod === 'MOMO' || paymentMethod === 'ZALOPAY' || paymentMethod === 'ATM') {
       try {
-        const paymentRes = await axios.post(`${PAYMENT_SERVICE_URL}/payments/create`, {
-          orderId: savedOrder.id,
-          amount: totalAmount,
-          method: paymentMethod
-        });
+        const paymentRes = await axios.post(
+          `${PAYMENT_SERVICE_URL}/payments/create`,
+          {
+            orderId: savedOrder.id,
+            amount: totalAmount,
+            method: paymentMethod,
+          },
+          {
+            headers: {
+              'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+            },
+          },
+        );
         paymentUrl = paymentRes.data.paymentUrl;
       } catch (paymentErr) {
         console.error(`[OrderService] Lấy link thanh toán thất bại`, paymentErr);

@@ -10,6 +10,17 @@ const getFrontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:3000
 const getPaymentSimulationSecret = () => process.env.PAYMENT_SIMULATION_SECRET || 'csm-payment-simulation-secret-key-2026';
 const getJwtSecret = () => process.env.JWT_SECRET || 'super-secret-jwt-access-token-key-32chars';
 
+// Helper escape chuỗi an toàn chống XSS trong HTML
+export function escapeHtml(str: any): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 @Controller('payments')
 export class PaymentController {
   @Get('health')
@@ -46,9 +57,53 @@ export class PaymentController {
   }
 
   @Post('create')
-  createPayment(@Body() body: { orderId: string; amount: number; method: string }) {
+  async createPayment(
+    @Body() body: { orderId: string; amount: number; method: string },
+    @Req() req: Request,
+  ) {
     if (!body || !body.orderId) {
       throw new HttpException('orderId không được để trống', HttpStatus.BAD_REQUEST);
+    }
+
+    // 1. Xác thực quyền tạo thanh toán: Cho phép gọi nội bộ (Order Service qua x-internal-secret) hoặc JWT từ chủ đơn / ADMIN
+    const internalSecret = getInternalSecret();
+    const isInternalCall = Boolean(internalSecret && req.headers['x-internal-secret'] === internalSecret);
+
+    if (!isInternalCall) {
+      let userId = req.headers['x-user-id'] as string;
+      let userRole = req.headers['x-user-role'] as string;
+
+      if (!userId && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        const token = req.headers.authorization.split(' ')[1];
+        try {
+          const payload: any = jwt.verify(token, getJwtSecret());
+          userId = payload.sub || payload.id;
+          userRole = payload.role;
+        } catch (e) {
+          throw new HttpException('Access Token không hợp lệ hoặc đã hết hạn', HttpStatus.UNAUTHORIZED);
+        }
+      }
+
+      if (!userId) {
+        throw new HttpException('Yêu cầu xác thực tài khoản (JWT)', HttpStatus.UNAUTHORIZED);
+      }
+
+      // Lấy thông tin đơn hàng để kiểm tra quyền sở hữu
+      let order: any;
+      try {
+        const orderRes = await axios.get(`${getOrderServiceUrl()}/orders/${body.orderId}`, {
+          headers: { 'x-internal-secret': internalSecret },
+        });
+        order = orderRes.data;
+      } catch (err: any) {
+        throw new HttpException(`Không tìm thấy đơn hàng ${body.orderId}`, HttpStatus.NOT_FOUND);
+      }
+
+      if (userRole === 'CUSTOMER' && order.user_id !== userId) {
+        throw new HttpException('Bạn không có quyền tạo thanh toán cho đơn hàng của người khác', HttpStatus.FORBIDDEN);
+      } else if (userRole !== 'ADMIN' && userRole !== 'SYSTEM' && order.user_id !== userId) {
+        throw new HttpException('Bạn không có quyền tạo thanh toán cho đơn hàng này', HttpStatus.FORBIDDEN);
+      }
     }
 
     console.log(`[PaymentService] Yêu cầu tạo thanh toán cho Order: ${body.orderId}, Method: ${body.method}`);
@@ -80,7 +135,6 @@ export class PaymentController {
     };
   }
 
-
   // Endpoint hiển thị trang HTML xác nhận (GET từ trình duyệt redirect) - KHÔNG ĐỔI TRẠNG THÁI
   @Get('simulate-success/:orderId')
   async simulateSuccessGet(
@@ -109,11 +163,20 @@ export class PaymentController {
       throw new HttpException(`Không tìm thấy đơn hàng ${orderId}`, HttpStatus.NOT_FOUND);
     }
 
-    const orderAmount = Number(order.total_amount || 0).toLocaleString('vi-VN');
-    const orderMethod = order.payment_method || 'Trực tuyến';
+    // Escape toàn bộ các trường chèn vào HTML
+    const safeOrderId = escapeHtml(orderId);
+    const safeQueryToken = escapeHtml(queryToken || '');
+    const orderAmount = escapeHtml(Number(order.total_amount || 0).toLocaleString('vi-VN'));
+    const orderMethod = escapeHtml(order.payment_method || 'Trực tuyến');
+    const safeStatus = escapeHtml(order.status);
     const isPaid = order.status === 'PAID';
     const isCancelled = order.status === 'CANCELLED';
-    const frontendUrl = getFrontendUrl();
+    const frontendUrl = escapeHtml(getFrontendUrl());
+
+    // Các biến an toàn dùng cho script client (chống script breakout bằng unicode escape)
+    const jsonOrderId = JSON.stringify(orderId).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+    const jsonToken = JSON.stringify(queryToken || '').replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+    const jsonRedirectUrl = JSON.stringify(`${getFrontendUrl()}/orders/${encodeURIComponent(orderId)}`).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
 
     const html = `
       <!DOCTYPE html>
@@ -152,7 +215,7 @@ export class PaymentController {
           <div class="order-box">
             <div class="order-row">
               <span>Mã đơn hàng:</span>
-              <span class="order-id">#${orderId}</span>
+              <span class="order-id">#${safeOrderId}</span>
             </div>
             <div class="order-row">
               <span>Phương thức:</span>
@@ -164,7 +227,7 @@ export class PaymentController {
             </div>
             <div class="order-row">
               <span>Trạng thái:</span>
-              <span class="status-badge ${isCancelled ? 'cancelled' : ''}">${order.status}</span>
+              <span class="status-badge ${isCancelled ? 'cancelled' : ''}">${safeStatus}</span>
             </div>
           </div>
 
@@ -172,16 +235,16 @@ export class PaymentController {
             isPaid
               ? `
             <p style="color: #2E7D32; font-weight: 600;">✓ Đơn hàng này đã hoàn tất thanh toán trước đó.</p>
-            <a href="${frontendUrl}/orders/${orderId}" class="btn">Xem chi tiết đơn hàng</a>
+            <a href="${frontendUrl}/orders/${safeOrderId}" class="btn">Xem chi tiết đơn hàng</a>
           `
               : isCancelled
               ? `
             <p style="color: #C62828; font-weight: 600;">Đơn hàng đã bị hủy, không thể tiếp tục thanh toán.</p>
-            <a href="${frontendUrl}/orders/${orderId}" class="btn btn-secondary">Quay lại đơn hàng</a>
+            <a href="${frontendUrl}/orders/${safeOrderId}" class="btn btn-secondary">Quay lại đơn hàng</a>
           `
               : `
             <button id="payBtn" onclick="confirmPayment()" class="btn">Xác nhận thanh toán mô phỏng</button>
-            <a href="${frontendUrl}/orders/${orderId}" class="btn btn-secondary">Hủy bỏ và quay lại</a>
+            <a href="${frontendUrl}/orders/${safeOrderId}" class="btn btn-secondary">Hủy bỏ và quay lại</a>
             <div id="statusMsg"></div>
           `
           }
@@ -200,15 +263,15 @@ export class PaymentController {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  orderId: '${orderId}',
-                  token: '${queryToken || ''}'
+                  orderId: ${jsonOrderId},
+                  token: ${jsonToken}
                 })
               });
               const data = await res.json();
               if (res.ok && data.success) {
                 msg.innerHTML = '<span style="color:#2E7D32">✓ Thanh toán thành công! Đang chuyển hướng...</span>';
                 setTimeout(() => {
-                  window.location.href = '${frontendUrl}/orders/${orderId}';
+                  window.location.href = ${jsonRedirectUrl};
                 }, 1500);
               } else {
                 btn.disabled = false;

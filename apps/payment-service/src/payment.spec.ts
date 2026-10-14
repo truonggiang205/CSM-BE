@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { PaymentController } from './payment.controller';
+import { PaymentController, escapeHtml } from './payment.controller';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
 import * as jwt from 'jsonwebtoken';
@@ -10,7 +10,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 describe('PaymentController (Unit Tests)', () => {
   let controller: PaymentController;
   const SECRET = 'csm-payment-simulation-secret-key-2026';
-  const JWT_SECRET = 'super-secret-jwt-access-token-key-32chars';
+  const JWT_SECRET = 'csm-super-secret-key-production-change-me';
 
   beforeEach(async () => {
     process.env.PAYMENT_SIMULATION = 'true';
@@ -30,6 +30,74 @@ describe('PaymentController (Unit Tests)', () => {
 
   afterAll(() => {
     process.env.PAYMENT_SIMULATION = 'true';
+  });
+
+  describe('1. Link sinh thanh toán (POST /payments/create) & Phân quyền', () => {
+    it('Phải từ chối 401 khi không có JWT / xác thực danh tính', async () => {
+      const mockReq: any = { headers: {} };
+      await expect(
+        controller.createPayment({ orderId: 'order-123', amount: 50000, method: 'MOMO' }, mockReq),
+      ).rejects.toThrow(new HttpException('Yêu cầu xác thực tài khoản (JWT)', HttpStatus.UNAUTHORIZED));
+    });
+
+    it('Phải từ chối 403 khi khách hàng CUSTOMER tạo thanh toán cho đơn hàng của người khác', async () => {
+      const mockReq: any = {
+        headers: {
+          'x-user-id': 'usr-other',
+          'x-user-role': 'CUSTOMER',
+        },
+      };
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { id: 'order-123', user_id: 'usr-owner', total_amount: 50000 },
+      });
+
+      await expect(
+        controller.createPayment({ orderId: 'order-123', amount: 50000, method: 'MOMO' }, mockReq),
+      ).rejects.toThrow(
+        new HttpException('Bạn không có quyền tạo thanh toán cho đơn hàng của người khác', HttpStatus.FORBIDDEN),
+      );
+    });
+
+    it('Phải cho phép chủ đơn hàng (owner CUSTOMER) tạo link thanh toán hợp lệ', async () => {
+      const mockReq: any = {
+        headers: {
+          'x-user-id': 'usr-owner',
+          'x-user-role': 'CUSTOMER',
+        },
+      };
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { id: 'order-123', user_id: 'usr-owner', total_amount: 50000 },
+      });
+
+      const res = await controller.createPayment(
+        { orderId: 'order-123', amount: 50000, method: 'MOMO' },
+        mockReq,
+      );
+
+      expect(res.success).toBe(true);
+      expect(res.paymentUrl).toContain('http://localhost:8000/api/v1/payments/simulate-success/order-123?token=');
+      expect(res.token).toBeDefined();
+
+      const decoded: any = jwt.verify(res.token, SECRET);
+      expect(decoded.orderId).toBe('order-123');
+      expect(decoded.exp - decoded.iat).toBe(600); // 10 phút
+    });
+
+    it('Phải cho phép ADMIN hoặc cuộc gọi nội bộ (x-internal-secret) tạo link thanh toán', async () => {
+      const mockReq: any = {
+        headers: {
+          'x-internal-secret': 'test-internal-secret',
+        },
+      };
+
+      const res = await controller.createPayment(
+        { orderId: 'order-admin', amount: 100000, method: 'ATM' },
+        mockReq,
+      );
+
+      expect(res.success).toBe(true);
+      expect(res.token).toBeDefined();
+    });
   });
 
   describe('2. Kiểm soát trạng thái PAYMENT_SIMULATION=false -> 404 (Không thể bypass bằng cờ request)', () => {
@@ -242,6 +310,54 @@ describe('PaymentController (Unit Tests)', () => {
         { status: 'PAID' },
         { headers: { 'x-internal-secret': 'test-internal-secret' } },
       );
+    });
+  });
+
+  describe('7. GET simulateSuccessGet hiển thị HTML, Escape chống XSS & KHÔNG đổi trạng thái', () => {
+    it('Phải escape các ký tự đặc biệt XSS và không đổi trạng thái đơn', async () => {
+      const maliciousOrderId = 'order-<script>alert(1)</script>';
+      const validToken = jwt.sign({ orderId: maliciousOrderId }, SECRET, { expiresIn: '10m' });
+
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          id: maliciousOrderId,
+          total_amount: 250000,
+          payment_method: 'MOMO"><img src=x onerror=alert(1)>',
+          status: 'PENDING',
+        },
+      });
+
+      let sentHtml = '';
+      const mockRes: any = {
+        status: jest.fn().mockReturnThis(),
+        type: jest.fn().mockReturnThis(),
+        send: jest.fn().mockImplementation((html) => {
+          sentHtml = html;
+          return mockRes;
+        }),
+      };
+
+      await controller.simulateSuccessGet(maliciousOrderId, validToken, {} as any, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.type).toHaveBeenCalledWith('html');
+
+      // Chứng minh các ký tự XSS đã bị escape triệt để
+      expect(sentHtml).not.toContain('<script>alert(1)</script>');
+      expect(sentHtml).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+      expect(sentHtml).not.toContain('<img src=x');
+      expect(sentHtml).toContain('&lt;img src=x');
+
+      // Tuyệt đối không thay đổi trạng thái trong GET
+      expect(mockedAxios.patch).not.toHaveBeenCalled();
+    });
+
+    it('Hàm escapeHtml phải chuyển đổi chính xác các ký tự đặc biệt', () => {
+      expect(escapeHtml('<div class="test" data-id=\'1\'>&</div>')).toBe(
+        '&lt;div class=&quot;test&quot; data-id=&#39;1&#39;&gt;&amp;&lt;/div&gt;',
+      );
+      expect(escapeHtml(null)).toBe('');
+      expect(escapeHtml(undefined)).toBe('');
     });
   });
 });
