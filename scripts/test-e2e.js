@@ -778,6 +778,67 @@ async function runSuite() {
     }
   );
 
+  // 2.1b - 2.1e: Kiểm thử bảo mật endpoint POST /payments/create (RBAC & JWT)
+  await testCase(
+    'Giai đoạn 2 [2.1b]: POST /payments/create không có JWT -> Từ chối 401 Unauthorized',
+    {
+      expectedStatus: 401,
+      assertFn: (d) => d.statusCode === 401,
+    },
+    async () => {
+      return await axios.post(`${BASE_URL}/payments/create`, {
+        orderId: orderOnlineId,
+        amount: 20000,
+        method: 'MOMO',
+      });
+    }
+  );
+
+  await testCase(
+    'Giai đoạn 2 [2.1c]: POST /payments/create với JWT không phải chủ đơn và không phải ADMIN -> Từ chối 403 Forbidden',
+    {
+      expectedStatus: 403,
+      assertFn: (d) => d.statusCode === 403,
+    },
+    async () => {
+      return await axios.post(
+        `${BASE_URL}/payments/create`,
+        { orderId: orderOnlineId, amount: 20000, method: 'MOMO' },
+        { headers: { Authorization: `Bearer ${managerAccessToken}` } }
+      );
+    }
+  );
+
+  await testCase(
+    'Giai đoạn 2 [2.1d]: POST /payments/create với JWT của chính chủ đơn -> Thành công 201 Created',
+    {
+      expectedStatus: 201,
+      assertFn: (d) => d.success === true && !!d.paymentUrl && !!d.simulationToken,
+    },
+    async () => {
+      return await axios.post(
+        `${BASE_URL}/payments/create`,
+        { orderId: orderOnlineId, amount: 20000, method: 'MOMO' },
+        { headers: { Authorization: `Bearer ${customerAccessToken}` } }
+      );
+    }
+  );
+
+  await testCase(
+    'Giai đoạn 2 [2.1e]: POST /payments/create với JWT của ADMIN -> Thành công 201 Created',
+    {
+      expectedStatus: 201,
+      assertFn: (d) => d.success === true && !!d.paymentUrl && !!d.simulationToken,
+    },
+    async () => {
+      return await axios.post(
+        `${BASE_URL}/payments/create`,
+        { orderId: orderOnlineId, amount: 20000, method: 'MOMO' },
+        { headers: { Authorization: `Bearer ${adminAccessToken}` } }
+      );
+    }
+  );
+
   // 2.2: GET /payments/simulate-success/:orderId - Trả về HTML xác nhận và KHÔNG đổi trạng thái
   await testCase(
     'Giai đoạn 2 [2.2a]: GET /payments/simulate-success/:orderId - Trả về HTML xác nhận và KHÔNG đổi trạng thái đơn',
