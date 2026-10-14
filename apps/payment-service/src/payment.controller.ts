@@ -8,6 +8,7 @@ const getInternalSecret = () => process.env.INTERNAL_SECRET || 'csm-super-secure
 const getPublicGatewayUrl = () => (process.env.PUBLIC_GATEWAY_URL || 'http://localhost:8000').replace(/\/+$/, '');
 const getFrontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const getPaymentSimulationSecret = () => process.env.PAYMENT_SIMULATION_SECRET || 'csm-payment-simulation-secret-key-2026';
+const getJwtSecret = () => process.env.JWT_SECRET || 'super-secret-jwt-access-token-key-32chars';
 
 @Controller('payments')
 export class PaymentController {
@@ -16,13 +17,10 @@ export class PaymentController {
     return { status: 'ok', service: 'payment-service' };
   }
 
-  // Helper kiểm tra cờ PAYMENT_SIMULATION
-  private ensureSimulationEnabled(req?: Request) {
-    const isGlobalFalse = process.env.PAYMENT_SIMULATION === 'false';
-    const isHeaderDisabled = req?.headers?.['x-payment-simulation'] === 'false';
-    const isQueryDisabled = req?.query?.simulate_disabled === 'true';
-
-    if (isGlobalFalse || isHeaderDisabled || isQueryDisabled) {
+  // Cờ PAYMENT_SIMULATION CHỈ đọc từ ConfigService / env server, tuyệt đối không cho phép bypass qua request
+  private ensureSimulationEnabled() {
+    const isEnabled = (process.env.PAYMENT_SIMULATION ?? 'true') === 'true';
+    if (!isEnabled) {
       throw new HttpException('Chức năng mô phỏng thanh toán đã bị vô hiệu hóa', HttpStatus.NOT_FOUND);
     }
   }
@@ -49,6 +47,10 @@ export class PaymentController {
 
   @Post('create')
   createPayment(@Body() body: { orderId: string; amount: number; method: string }) {
+    if (!body || !body.orderId) {
+      throw new HttpException('orderId không được để trống', HttpStatus.BAD_REQUEST);
+    }
+
     console.log(`[PaymentService] Yêu cầu tạo thanh toán cho Order: ${body.orderId}, Method: ${body.method}`);
 
     // Ký token JWT mô phỏng thanh toán riêng biệt, hết hạn sau 10 phút
@@ -74,8 +76,10 @@ export class PaymentController {
       paymentUrl,
       externalMockUrl,
       token: simulationToken,
+      simulationToken,
     };
   }
+
 
   // Endpoint hiển thị trang HTML xác nhận (GET từ trình duyệt redirect) - KHÔNG ĐỔI TRẠNG THÁI
   @Get('simulate-success/:orderId')
@@ -85,7 +89,7 @@ export class PaymentController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    this.ensureSimulationEnabled(req);
+    this.ensureSimulationEnabled();
 
     // Xác thực token JWT
     this.verifySimulationToken(queryToken, orderId);
@@ -231,9 +235,8 @@ export class PaymentController {
   async simulateSuccessPost(
     @Body() body: { orderId: string; token?: string },
     @Query('token') queryToken: string,
-    @Req() req: Request,
   ) {
-    this.ensureSimulationEnabled(req);
+    this.ensureSimulationEnabled();
 
     if (!body || !body.orderId) {
       throw new HttpException('orderId không được để trống', HttpStatus.BAD_REQUEST);
