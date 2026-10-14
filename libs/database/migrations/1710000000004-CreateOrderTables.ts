@@ -10,6 +10,7 @@ export class CreateOrderTables1710000000004 implements MigrationInterface {
         \`user_id\` varchar(255) NOT NULL,
         \`branch_id\` varchar(255) NOT NULL,
         \`total_amount\` decimal(12,2) NOT NULL DEFAULT 0.00,
+        \`payment_method\` varchar(50) NOT NULL DEFAULT 'COD',
         \`status\` enum('PENDING','CONFIRMED','PAID','SHIPPED','CANCELLED') NOT NULL DEFAULT 'PENDING',
         \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         \`updated_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),

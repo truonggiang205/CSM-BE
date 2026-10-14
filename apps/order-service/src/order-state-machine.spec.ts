@@ -24,6 +24,7 @@ describe('Order Service State Machine Test (May trang thai don hang)', () => {
       user_id: 'usr-customer-01',
       branch_id: 'br-01',
       total_amount: 100000,
+      payment_method: 'COD',
       status: OrderStatus.PENDING,
       created_at: new Date(),
       updated_at: new Date(),
