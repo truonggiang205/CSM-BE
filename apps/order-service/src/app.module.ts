@@ -21,6 +21,8 @@ import { JwtModule } from '@nestjs/jwt';
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
           configService.get<string>('DB_SYNC') === 'true',
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        migrationsRun: configService.get<string>('DB_SYNC') === 'false',
         ssl: configService.get<string>('ORDER_DB_URL')?.includes('ssl-mode=REQUIRED')
           ? { rejectUnauthorized: false }
           : false,
