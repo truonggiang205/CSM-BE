@@ -34,18 +34,15 @@ const seedUsers = [
 ];
 
 async function runSeed() {
-  const dbUrl = process.env.AUTH_DB_URL;
-  if (!dbUrl) {
-    console.error('AUTH_DB_URL not found in environment');
-    process.exit(1);
-  }
+  const dbUrl = process.env.AUTH_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_auth';
+  const hasSsl = dbUrl.includes('ssl-mode=REQUIRED');
 
   const dataSource = new DataSource({
     type: 'mysql',
     url: dbUrl,
     entities: [User],
     synchronize: true,
-    ssl: { rejectUnauthorized: false },
+    ssl: hasSsl ? { rejectUnauthorized: false } : false,
   });
 
   await dataSource.initialize();

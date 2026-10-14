@@ -100,17 +100,15 @@ async function runSeed() {
   console.log('🚀 Bắt đầu chạy Seed dữ liệu Idempotent cho Hệ Thống CSM...');
 
   // --- 1. SEED PRODUCT DATABASE (Categories & Products) ---
-  const productDbUrl = process.env.PRODUCT_DB_URL;
-  if (!productDbUrl) {
-    throw new Error('PRODUCT_DB_URL không tìm thấy trong file .env');
-  }
+  const productDbUrl = process.env.PRODUCT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_product';
+  const hasProductSsl = productDbUrl.includes('ssl-mode=REQUIRED');
 
   const productDs = new DataSource({
     type: 'mysql',
     url: productDbUrl,
     entities: [Category, Product],
     synchronize: true,
-    ssl: { rejectUnauthorized: false },
+    ssl: hasProductSsl ? { rejectUnauthorized: false } : false,
   });
 
   await productDs.initialize();
@@ -164,17 +162,15 @@ async function runSeed() {
   }
 
   // --- 2. SEED INVENTORY DATABASE (Branches & Stocks) ---
-  const inventoryDbUrl = process.env.INVENTORY_DB_URL;
-  if (!inventoryDbUrl) {
-    throw new Error('INVENTORY_DB_URL không tìm thấy trong file .env');
-  }
+  const inventoryDbUrl = process.env.INVENTORY_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_inventory';
+  const hasInventorySsl = inventoryDbUrl.includes('ssl-mode=REQUIRED');
 
   const inventoryDs = new DataSource({
     type: 'mysql',
     url: inventoryDbUrl,
     entities: [Branch, Stock, StockTransaction],
     synchronize: true,
-    ssl: { rejectUnauthorized: false },
+    ssl: hasInventorySsl ? { rejectUnauthorized: false } : false,
   });
 
   await inventoryDs.initialize();

@@ -167,6 +167,15 @@ services:
     restart: always
     environment:
       PORT: 3005
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-access-token-key-32chars}
+      PAYMENT_SIMULATION: ${PAYMENT_SIMULATION:-true}
+      # LƯU Ý BẢO MẬT: PAYMENT_SIMULATION_SECRET bắt buộc cấu hình khóa bí mật an toàn từ .env cho production.
+      # Giá trị fallback dưới đây CHỈ DÀNH CHO MÔI TRƯỜNG DEV NỘI BỘ, TUYỆT ĐỐI KHÔNG DÙNG CHO PRODUCTION.
+      PAYMENT_SIMULATION_SECRET: ${PAYMENT_SIMULATION_SECRET:-csm-payment-simulation-secret-key-2026}
+      ORDER_SERVICE_URL: http://order-service:3004
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-csm-super-secure-internal-secret-token}
+      PUBLIC_GATEWAY_URL: ${PUBLIC_GATEWAY_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - "3005:3005"
     networks:
