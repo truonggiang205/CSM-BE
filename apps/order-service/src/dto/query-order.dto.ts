@@ -29,4 +29,12 @@ export class QueryOrderDto extends QueryMyOrderDto {
   @IsOptional()
   @IsString({ message: 'search phải là chuỗi' })
   search?: string;
+
+  @IsOptional()
+  @IsString({ message: 'fromDate phải là chuỗi định dạng ngày' })
+  fromDate?: string;
+
+  @IsOptional()
+  @IsString({ message: 'toDate phải là chuỗi định dạng ngày' })
+  toDate?: string;
 }
