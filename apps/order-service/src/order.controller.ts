@@ -330,11 +330,14 @@ export class OrderController {
       take: limit,
     });
 
+    const totalPages = Math.ceil(total / limit);
+
     return {
       items,
       total,
       page,
       limit,
+      totalPages,
     };
   }
 
@@ -390,12 +393,14 @@ export class OrderController {
       .take(limit);
 
     const [items, total] = await qb.getManyAndCount();
+    const totalPages = Math.ceil(total / limit);
 
     return {
       items,
       total,
       page,
       limit,
+      totalPages,
     };
   }
 

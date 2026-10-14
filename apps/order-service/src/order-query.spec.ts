@@ -135,7 +135,7 @@ describe('Order Service Query Tests (CSM-29: GET /orders/my, GET /orders, GET /o
   });
 
   describe('1. GET /orders/my (Khách hàng xem đơn của chính mình)', () => {
-    it('Trả về đúng danh sách đơn của chính người dùng và cấu trúc { items, total, page, limit }', async () => {
+    it('Trả về đúng danh sách đơn của chính người dùng và cấu trúc { items, total, page, limit, totalPages }', async () => {
       const mockReq = { user: { id: 'usr-customer-01', role: 'CUSTOMER' }, headers: {} };
       const res = await orderController.getMyOrders(mockReq, { page: 1, limit: 10 });
 
@@ -143,6 +143,7 @@ describe('Order Service Query Tests (CSM-29: GET /orders/my, GET /orders, GET /o
       expect(res).toHaveProperty('total', 2);
       expect(res).toHaveProperty('page', 1);
       expect(res).toHaveProperty('limit', 10);
+      expect(res).toHaveProperty('totalPages', 1);
       expect(res.items.every((o: any) => o.user_id === 'usr-customer-01')).toBe(true);
     });
 
@@ -151,6 +152,7 @@ describe('Order Service Query Tests (CSM-29: GET /orders/my, GET /orders, GET /o
       const res = await orderController.getMyOrders(mockReq, { status: OrderStatus.CONFIRMED });
 
       expect(res.total).toBe(1);
+      expect(res.totalPages).toBe(1);
       expect(res.items[0].status).toBe(OrderStatus.CONFIRMED);
     });
   });
@@ -173,6 +175,7 @@ describe('Order Service Query Tests (CSM-29: GET /orders/my, GET /orders, GET /o
 
       expect(qbState.params.userBranch).toBe('br-01');
       expect(qbState.params.filterBranch).toBeUndefined();
+      expect(res).toHaveProperty('totalPages', 1);
       expect(res.items.every((o: any) => o.branch_id === 'br-01')).toBe(true);
     });
 
@@ -180,10 +183,12 @@ describe('Order Service Query Tests (CSM-29: GET /orders/my, GET /orders, GET /o
       const mockReq = { user: { id: 'admin-01', role: 'ADMIN' }, headers: {} };
       const resAll = await orderController.getAllOrders(mockReq, {});
       expect(resAll.total).toBe(3);
+      expect(resAll.totalPages).toBe(1);
 
       const resFilter = await orderController.getAllOrders(mockReq, { branchId: 'br-02' });
       expect(qbState.params.filterBranch).toBe('br-02');
       expect(resFilter.total).toBe(1);
+      expect(resFilter.totalPages).toBe(1);
       expect(resFilter.items[0].id).toBe('order-002');
     });
 
