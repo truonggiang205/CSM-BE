@@ -26,11 +26,15 @@
  * ==============================================================================
  */
 
+const fs = require('fs');
+const { spawn, execSync } = require('child_process');
 const axios = require('axios');
 const dotenv = require('dotenv');
 const path = require('path');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -974,35 +978,84 @@ async function runSuite() {
     }
   );
 
-  // 2.9: PAYMENT_SIMULATION=false -> Trả về 404 Not Found
-  await testCase(
-    'Giai đoạn 2 [2.9a]: POST /payments/simulate-success khi PAYMENT_SIMULATION=false -> Trả về 404 Not Found',
+  // 2.9: PAYMENT_SIMULATION=false trên server -> Trả về 404 Not Found (chạy cục bộ payment-service tắt simulation)
+  console.log('\n--- Kiểm thử PAYMENT_SIMULATION=false bằng payment-service cục bộ tắt simulation ---');
+  const localPaymentPort = 3095;
+  const localPaymentUrl = `http://localhost:${localPaymentPort}`;
+  const paymentDistPath = path.join(__dirname, '../apps/payment-service/dist/main.js');
+  if (!fs.existsSync(paymentDistPath)) {
+    execSync('npm --prefix apps/payment-service run build', { stdio: 'inherit' });
+  }
+
+  const localPaymentProc = spawn(
+    process.execPath,
+    [paymentDistPath],
     {
-      expectedStatus: 404,
-      assertFn: (d) => d.statusCode === 404,
-    },
-    async () => {
-      return await axios.post(
-        `${BASE_URL}/payments/simulate-success`,
-        { orderId: orderOnlineId, token: onlineToken },
-        { headers: { 'x-payment-simulation': 'false' } }
-      );
+      env: {
+        ...process.env,
+        PORT: String(localPaymentPort),
+        PAYMENT_SIMULATION: 'false',
+        ORDER_SERVICE_URL: process.env.ORDER_SERVICE_URL || 'http://localhost:3004',
+      },
+      stdio: 'ignore',
     }
   );
 
-  await testCase(
-    'Giai đoạn 2 [2.9b]: GET /payments/simulate-success/:orderId khi PAYMENT_SIMULATION=false -> Trả về 404 Not Found',
-    {
-      expectedStatus: 404,
-      assertFn: (d) => d.statusCode === 404,
-    },
-    async () => {
-      return await axios.get(
-        `${BASE_URL}/payments/simulate-success/${orderOnlineId}?token=${onlineToken}`,
-        { headers: { 'x-payment-simulation': 'false' } }
-      );
+  try {
+    for (let i = 0; i < 40; i++) {
+      try {
+        const h = await axios.get(`${localPaymentUrl}/payments/health`, { timeout: 300 });
+        if (h.status === 200) break;
+      } catch (e) {}
+      await sleep(250);
     }
-  );
+
+    await testCase(
+      'Giai đoạn 2 [2.9a]: POST /payments/simulate-success khi server tắt PAYMENT_SIMULATION=false -> Trả về 404 Not Found',
+      {
+        expectedStatus: 404,
+        assertFn: (d) => d.statusCode === 404,
+      },
+      async () => {
+        return await axios.post(`${localPaymentUrl}/payments/simulate-success`, {
+          orderId: orderOnlineId,
+          token: onlineToken,
+        });
+      }
+    );
+
+    await testCase(
+      'Giai đoạn 2 [2.9b]: GET /payments/simulate-success/:orderId khi server tắt PAYMENT_SIMULATION=false -> Trả về 404 Not Found',
+      {
+        expectedStatus: 404,
+        assertFn: (d) => d.statusCode === 404,
+      },
+      async () => {
+        return await axios.get(
+          `${localPaymentUrl}/payments/simulate-success/${orderOnlineId}?token=${onlineToken}`
+        );
+      }
+    );
+
+    await testCase(
+      'Giai đoạn 2 [2.9c]: Request gửi cờ bật giả (x-payment-simulation: true) khi server tắt vẫn nhận 404',
+      {
+        expectedStatus: 404,
+        assertFn: (d) => d.statusCode === 404,
+      },
+      async () => {
+        return await axios.post(
+          `${localPaymentUrl}/payments/simulate-success`,
+          { orderId: orderOnlineId, token: onlineToken, simulate: true },
+          { headers: { 'x-payment-simulation': 'true' } }
+        );
+      }
+    );
+  } finally {
+    if (localPaymentProc) {
+      localPaymentProc.kill();
+    }
+  }
 
   // YÊU CẦU 3: DỌN DẸP TOÀN BỘ DỮ LIỆU TEST KHI BẬT --cleanup
   if (shouldCleanup) {

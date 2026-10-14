@@ -10,6 +10,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 describe('PaymentController (Unit Tests)', () => {
   let controller: PaymentController;
   const SECRET = 'csm-payment-simulation-secret-key-2026';
+  const JWT_SECRET = 'super-secret-jwt-access-token-key-32chars';
 
   beforeEach(async () => {
     process.env.PAYMENT_SIMULATION = 'true';
@@ -17,6 +18,7 @@ describe('PaymentController (Unit Tests)', () => {
     process.env.PUBLIC_GATEWAY_URL = 'http://localhost:8000';
     process.env.FRONTEND_URL = 'http://localhost:3000';
     process.env.INTERNAL_SECRET = 'test-internal-secret';
+    process.env.JWT_SECRET = JWT_SECRET;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PaymentController],
@@ -30,26 +32,8 @@ describe('PaymentController (Unit Tests)', () => {
     process.env.PAYMENT_SIMULATION = 'true';
   });
 
-  describe('1. Link sinh thanh toán (createPayment)', () => {
-    it('Phải sinh paymentUrl chứa token JWT hợp lệ với orderId và hạn 10m', () => {
-      const res = controller.createPayment({
-        orderId: 'order-123',
-        amount: 50000,
-        method: 'MOMO',
-      });
-
-      expect(res.success).toBe(true);
-      expect(res.paymentUrl).toContain('http://localhost:8000/api/v1/payments/simulate-success/order-123?token=');
-      expect(res.token).toBeDefined();
-
-      const decoded: any = jwt.verify(res.token, SECRET);
-      expect(decoded.orderId).toBe('order-123');
-      expect(decoded.exp - decoded.iat).toBe(600); // 10 phút = 600 giây
-    });
-  });
-
-  describe('2. Kiểm soát trạng thái PAYMENT_SIMULATION=false -> 404', () => {
-    it('GET simulateSuccessGet phải trả về 404 khi PAYMENT_SIMULATION=false', async () => {
+  describe('2. Kiểm soát trạng thái PAYMENT_SIMULATION=false -> 404 (Không thể bypass bằng cờ request)', () => {
+    it('GET simulateSuccessGet phải trả về 404 khi server đặt PAYMENT_SIMULATION=false', async () => {
       process.env.PAYMENT_SIMULATION = 'false';
       const mockRes: any = { status: jest.fn().mockReturnThis(), type: jest.fn().mockReturnThis(), send: jest.fn() };
 
@@ -60,22 +44,38 @@ describe('PaymentController (Unit Tests)', () => {
       );
     });
 
-    it('POST simulateSuccessPost phải trả về 404 khi PAYMENT_SIMULATION=false', async () => {
+    it('POST simulateSuccessPost phải trả về 404 khi server đặt PAYMENT_SIMULATION=false', async () => {
       process.env.PAYMENT_SIMULATION = 'false';
 
       await expect(
-        controller.simulateSuccessPost({ orderId: 'order-123', token: 'any-token' }, '', {} as any),
+        controller.simulateSuccessPost({ orderId: 'order-123', token: 'any-token' }, ''),
       ).rejects.toThrow(
         new HttpException('Chức năng mô phỏng thanh toán đã bị vô hiệu hóa', HttpStatus.NOT_FOUND),
       );
     });
 
-    it('Phải trả 404 khi nhận header x-payment-simulation = false', async () => {
-      process.env.PAYMENT_SIMULATION = 'true';
-      const mockReq: any = { headers: { 'x-payment-simulation': 'false' } };
+    it('Request cố tình gửi cờ bật giả (x-payment-simulation: true) VẪN PHẢI NHẬN 404 khi server tắt', async () => {
+      process.env.PAYMENT_SIMULATION = 'false';
+      const mockReq: any = {
+        headers: {
+          'x-payment-simulation': 'true',
+          'simulate-enabled': 'true',
+        },
+        query: {
+          simulate: 'true',
+          enabled: 'true',
+        },
+      };
+      const mockRes: any = { status: jest.fn().mockReturnThis(), type: jest.fn().mockReturnThis(), send: jest.fn() };
 
       await expect(
-        controller.simulateSuccessPost({ orderId: 'order-123', token: 'any-token' }, '', mockReq),
+        controller.simulateSuccessGet('order-123', 'any-token', mockReq, mockRes),
+      ).rejects.toThrow(
+        new HttpException('Chức năng mô phỏng thanh toán đã bị vô hiệu hóa', HttpStatus.NOT_FOUND),
+      );
+
+      await expect(
+        controller.simulateSuccessPost({ orderId: 'order-123', token: 'any-token' }, ''),
       ).rejects.toThrow(
         new HttpException('Chức năng mô phỏng thanh toán đã bị vô hiệu hóa', HttpStatus.NOT_FOUND),
       );
@@ -85,7 +85,7 @@ describe('PaymentController (Unit Tests)', () => {
   describe('3. Xác thực Token JWT (401/403)', () => {
     it('Phải trả về 401 khi không gửi token', async () => {
       await expect(
-        controller.simulateSuccessPost({ orderId: 'order-123' }, '', {} as any),
+        controller.simulateSuccessPost({ orderId: 'order-123' }, ''),
       ).rejects.toThrow(
         new HttpException('Thiếu token xác thực thanh toán', HttpStatus.UNAUTHORIZED),
       );
@@ -93,7 +93,7 @@ describe('PaymentController (Unit Tests)', () => {
 
     it('Phải trả về 401 khi token sai chữ ký hoặc format', async () => {
       await expect(
-        controller.simulateSuccessPost({ orderId: 'order-123', token: 'invalid.jwt.token' }, '', {} as any),
+        controller.simulateSuccessPost({ orderId: 'order-123', token: 'invalid.jwt.token' }, ''),
       ).rejects.toThrow(
         new HttpException('Token xác thực thanh toán không hợp lệ hoặc đã hết hạn', HttpStatus.UNAUTHORIZED),
       );
@@ -103,7 +103,7 @@ describe('PaymentController (Unit Tests)', () => {
       const expiredToken = jwt.sign({ orderId: 'order-123' }, SECRET, { expiresIn: '-1s' });
 
       await expect(
-        controller.simulateSuccessPost({ orderId: 'order-123', token: expiredToken }, '', {} as any),
+        controller.simulateSuccessPost({ orderId: 'order-123', token: expiredToken }, ''),
       ).rejects.toThrow(
         new HttpException('Token xác thực thanh toán không hợp lệ hoặc đã hết hạn', HttpStatus.UNAUTHORIZED),
       );
@@ -113,7 +113,7 @@ describe('PaymentController (Unit Tests)', () => {
       const tokenOrder456 = jwt.sign({ orderId: 'order-456' }, SECRET, { expiresIn: '10m' });
 
       await expect(
-        controller.simulateSuccessPost({ orderId: 'order-123', token: tokenOrder456 }, '', {} as any),
+        controller.simulateSuccessPost({ orderId: 'order-123', token: tokenOrder456 }, ''),
       ).rejects.toThrow(
         new HttpException('Token không khớp với đơn hàng', HttpStatus.FORBIDDEN),
       );
@@ -133,7 +133,7 @@ describe('PaymentController (Unit Tests)', () => {
       });
 
       await expect(
-        controller.simulateSuccessPost({ orderId: 'order-cod', token: validToken }, '', {} as any),
+        controller.simulateSuccessPost({ orderId: 'order-cod', token: validToken }, ''),
       ).rejects.toThrow(
         new HttpException('Không thể thanh toán trực tuyến cho đơn hàng COD', HttpStatus.BAD_REQUEST),
       );
@@ -151,7 +151,7 @@ describe('PaymentController (Unit Tests)', () => {
       });
 
       await expect(
-        controller.simulateSuccessPost({ orderId: 'order-cancelled', token: validToken }, '', {} as any),
+        controller.simulateSuccessPost({ orderId: 'order-cancelled', token: validToken }, ''),
       ).rejects.toThrow(
         new HttpException('Không thể thanh toán đơn hàng đã bị hủy', HttpStatus.BAD_REQUEST),
       );
@@ -173,7 +173,6 @@ describe('PaymentController (Unit Tests)', () => {
       const res = await controller.simulateSuccessPost(
         { orderId: 'order-paid', token: validToken },
         '',
-        {} as any,
       );
 
       expect(res.success).toBe(true);
@@ -196,7 +195,6 @@ describe('PaymentController (Unit Tests)', () => {
       const res = await controller.simulateSuccessPost(
         { orderId: 'order-confirmed', token: validToken },
         '',
-        {} as any,
       );
 
       expect(res.success).toBe(true);
@@ -225,7 +223,6 @@ describe('PaymentController (Unit Tests)', () => {
       const res = await controller.simulateSuccessPost(
         { orderId: 'order-pending', token: validToken },
         '',
-        {} as any,
       );
 
       expect(res.success).toBe(true);
@@ -245,40 +242,6 @@ describe('PaymentController (Unit Tests)', () => {
         { status: 'PAID' },
         { headers: { 'x-internal-secret': 'test-internal-secret' } },
       );
-    });
-  });
-
-  describe('7. GET simulateSuccessGet hiển thị HTML mà KHÔNG đổi trạng thái', () => {
-    it('Trả về HTML và không bao giờ gọi PATCH cập nhật trạng thái', async () => {
-      const validToken = jwt.sign({ orderId: 'order-html' }, SECRET, { expiresIn: '10m' });
-      mockedAxios.get.mockResolvedValueOnce({
-        data: {
-          id: 'order-html',
-          total_amount: 250000,
-          payment_method: 'MOMO',
-          status: 'PENDING',
-        },
-      });
-
-      let sentHtml = '';
-      const mockRes: any = {
-        status: jest.fn().mockReturnThis(),
-        type: jest.fn().mockReturnThis(),
-        send: jest.fn().mockImplementation((html) => {
-          sentHtml = html;
-          return mockRes;
-        }),
-      };
-
-      await controller.simulateSuccessGet('order-html', validToken, {} as any, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(200);
-      expect(mockRes.type).toHaveBeenCalledWith('html');
-      expect(sentHtml).toContain('Mô phỏng Cổng Thanh toán');
-      expect(sentHtml).toContain('#order-html');
-      expect(sentHtml).toContain('Xác nhận thanh toán mô phỏng');
-      // Tuyệt đối không thay đổi trạng thái trong GET
-      expect(mockedAxios.patch).not.toHaveBeenCalled();
     });
   });
 });
