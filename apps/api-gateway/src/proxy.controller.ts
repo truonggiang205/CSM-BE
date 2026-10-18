@@ -1,4 +1,4 @@
-import { Controller, All, Req, Res, HttpStatus } from '@nestjs/common';
+import { Controller, All, Req, Res, Next, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import axios from 'axios';
@@ -20,6 +20,11 @@ function isPublicEndpoint(method: string, path: string): boolean {
   const m = method.toUpperCase();
 
   if (normPath === '/health') {
+    return true;
+  }
+
+  // Swagger Documentation routes
+  if (normPath.startsWith('/docs') || normPath.startsWith('/swagger')) {
     return true;
   }
 
@@ -59,8 +64,11 @@ export class ProxyController {
 
 
   @All('*')
-  async handleProxy(@Req() req: Request, @Res() res: Response) {
+  async handleProxy(@Req() req: Request, @Res() res: Response, @Next() next: any) {
     const cleanPath = req.path.replace(/^\/?(api\/v1\/)?/, '');
+    if (cleanPath.startsWith('docs') || cleanPath.startsWith('swagger') || req.path.includes('/docs')) {
+      return next();
+    }
     const pathParts = cleanPath.split('/');
     const targetKey = pathParts[0];
     const targetBaseUrl = SERVICE_MAP[targetKey];
