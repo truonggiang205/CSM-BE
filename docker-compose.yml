@@ -220,6 +220,8 @@ services:
     restart: always
     environment:
       PORT: 8000
+      NODE_ENV: ${NODE_ENV:-development}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
       JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-access-token-key-32chars}
       INTERNAL_SECRET: ${INTERNAL_SECRET:-csm-super-secure-internal-secret-token}
       AUTH_SERVICE_URL: http://auth-service:3001
