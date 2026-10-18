@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { User, UserRole } from './entities/user.entity';
 
@@ -145,6 +145,29 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
       await expect(
         authService.login({ email: 'notfound@csm.vn', password: 'CorrectPass123!' }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('Đăng nhập thành công với tài khoản seed cũ sử dụng định dạng hash bcrypt $2b$', async () => {
+      // Hash $2b$ được tạo bởi bcrypt native trước đây cho mật khẩu 'Admin@123456'
+      mockUsers.push({
+        id: 'usr-admin-seed',
+        email: 'admin.legacy@csm.vn',
+        password_hash: '$2b$10$6AuRHDRVqMnLUM8Xf.AvSevPH3APjkcvcCXkRka3JBE8gB07YA/CW',
+        role: UserRole.ADMIN,
+        branch_id: null as any,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      const res = await authService.login({
+        email: 'admin.legacy@csm.vn',
+        password: 'Admin@123456',
+      });
+
+      expect(res.message).toBe('Đăng nhập thành công');
+      expect(res.user.email).toBe('admin.legacy@csm.vn');
+      expect(res.user.role).toBe(UserRole.ADMIN);
+      expect(res.accessToken).toBeDefined();
     });
   });
 
