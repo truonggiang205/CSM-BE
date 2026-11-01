@@ -15,6 +15,7 @@ const SERVICE_MAP: Record<string, string> = {
   orders: process.env.ORDER_SERVICE_URL || 'http://localhost:3004',
   payments: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005',
   notifications: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
+  uploads: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
 };
 
 function isPublicEndpoint(method: string, pathUrl: string): boolean {
@@ -67,6 +68,14 @@ export class ProxyController {
   @All('health')
   getHealth() {
     return { status: 'ok', service: 'api-gateway' };
+  }
+
+  @Get('uploads')
+  getUploadsBase(@Res() res: Response) {
+    return res.status(HttpStatus.BAD_REQUEST).json({
+      statusCode: HttpStatus.BAD_REQUEST,
+      message: 'Phát hiện path traversal không hợp lệ',
+    });
   }
 
   @Get('uploads/:filename')
@@ -144,10 +153,12 @@ export class ProxyController {
 
   @All('*')
   async handleProxy(@Req() req: Request, @Res() res: Response, @Next() next: any) {
-    // Chặn path traversal nếu client gửi URL chứa uploads và ..
+    const rawUrl = req.originalUrl || req.url || req.path || '';
+
+    // Chặn path traversal nếu client gửi URL chứa uploads và .. hoặc %2e
     if (
-      req.path.includes('/uploads') &&
-      (req.path.includes('..') || req.path.includes('%2e') || req.path.includes('%2E'))
+      rawUrl.includes('/uploads') &&
+      (rawUrl.includes('..') || rawUrl.toLowerCase().includes('%2e'))
     ) {
       return res.status(HttpStatus.BAD_REQUEST).json({
         statusCode: HttpStatus.BAD_REQUEST,
@@ -159,6 +170,18 @@ export class ProxyController {
     if (cleanPath.startsWith('docs') || cleanPath.startsWith('swagger') || req.path.includes('/docs')) {
       return next();
     }
+
+    if (cleanPath.startsWith('uploads')) {
+      const uploadFilename = cleanPath.replace(/^uploads\/?/, '');
+      if (!uploadFilename) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: 'Phát hiện path traversal không hợp lệ',
+        });
+      }
+      return this.serveUploadFile(uploadFilename, res);
+    }
+
     const pathParts = cleanPath.split('/');
     const targetKey = pathParts[0];
     const targetBaseUrl = SERVICE_MAP[targetKey];
