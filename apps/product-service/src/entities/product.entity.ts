@@ -1,7 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Category } from './category.entity';
 
 @Entity('products')
+@Index(['name'])
+@Index(['base_price'])
+@Index(['created_at'])
 export class Product {
   @PrimaryGeneratedColumn('uuid')
   id: string;

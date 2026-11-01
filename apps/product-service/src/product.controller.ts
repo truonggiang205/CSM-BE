@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, NotFoundException, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  NotFoundException,
+  BadRequestException,
+  UseGuards,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
@@ -9,6 +21,7 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { QueryProductDto } from './dto/query-product.dto';
 
 @Controller()
 @UseGuards(RolesGuard)
@@ -26,7 +39,6 @@ export class ProductController {
   }
 
   // --- CATEGORY CRUD ---
-
 
   @Get('categories')
   async getAllCategories() {
@@ -57,15 +69,72 @@ export class ProductController {
   // --- PRODUCT CRUD ---
 
   @Get('products')
-  async getAllProducts() {
-    return this.productRepository.find({ relations: ['category'] });
+  async getAllProducts(@Query() query: QueryProductDto) {
+    if (
+      query.minPrice !== undefined &&
+      query.maxPrice !== undefined &&
+      Number(query.minPrice) > Number(query.maxPrice)
+    ) {
+      throw new BadRequestException('minPrice không được lớn hơn maxPrice');
+    }
+
+    const page = query.page && Number(query.page) >= 1 ? Number(query.page) : 1;
+    const limit = query.limit && Number(query.limit) >= 1 ? Number(query.limit) : 10;
+    const skip = (page - 1) * limit;
+
+    const qb = this.productRepository
+      .createQueryBuilder('product')
+      .leftJoinAndSelect('product.category', 'category');
+
+    if (query.q && query.q.trim()) {
+      const searchTerm = `%${query.q.trim()}%`;
+      qb.andWhere('(product.name LIKE :searchTerm OR product.sku LIKE :searchTerm)', { searchTerm });
+    }
+
+    if (query.categoryId && query.categoryId.trim()) {
+      qb.andWhere('product.category_id = :categoryId', { categoryId: query.categoryId.trim() });
+    }
+
+    if (query.minPrice !== undefined) {
+      qb.andWhere('product.base_price >= :minPrice', { minPrice: Number(query.minPrice) });
+    }
+
+    if (query.maxPrice !== undefined) {
+      qb.andWhere('product.base_price <= :maxPrice', { maxPrice: Number(query.maxPrice) });
+    }
+
+    if (query.sort === 'price_asc') {
+      qb.orderBy('product.base_price', 'ASC');
+      qb.addOrderBy('product.created_at', 'DESC');
+    } else if (query.sort === 'price_desc') {
+      qb.orderBy('product.base_price', 'DESC');
+      qb.addOrderBy('product.created_at', 'DESC');
+    } else if (query.sort === 'name') {
+      qb.orderBy('product.name', 'ASC');
+      qb.addOrderBy('product.created_at', 'DESC');
+    } else {
+      qb.orderBy('product.created_at', 'DESC');
+    }
+
+    qb.skip(skip).take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+    const totalPages = total > 0 ? Math.ceil(total / limit) : 0;
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   @Get('products/:id')
   async getProductById(@Param('id') id: string) {
-    const product = await this.productRepository.findOne({ 
+    const product = await this.productRepository.findOne({
       where: { id },
-      relations: ['category']
+      relations: ['category'],
     });
     if (!product) {
       throw new NotFoundException('Không tìm thấy sản phẩm');
