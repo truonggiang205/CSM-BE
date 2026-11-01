@@ -10,6 +10,22 @@ async function bootstrap() {
     origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
+
+  // Chặn path traversal sớm trước khi router chuẩn hóa path
+  app.use((req: any, res: any, next: any) => {
+    const rawUrl = req.originalUrl || req.url || '';
+    if (
+      rawUrl.includes('/uploads') &&
+      (rawUrl.includes('..') || rawUrl.toLowerCase().includes('%2e'))
+    ) {
+      return res.status(400).json({
+        statusCode: 400,
+        message: 'Phát hiện path traversal không hợp lệ',
+      });
+    }
+    next();
+  });
+
   app.setGlobalPrefix('api/v1', {
     exclude: ['docs', 'docs/(.*)', 'uploads', 'uploads/(.*)'],
   });
