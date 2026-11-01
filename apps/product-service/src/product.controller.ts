@@ -10,9 +10,18 @@ import {
   NotFoundException,
   BadRequestException,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Res,
+  UseFilters,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
 import { Product } from './entities/product.entity';
 import { Category } from './entities/category.entity';
 import { RolesGuard } from './guards/roles.guard';
@@ -22,6 +31,7 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
+import { MulterExceptionFilter } from './filters/multer-exception.filter';
 
 @Controller()
 @UseGuards(RolesGuard)
@@ -182,6 +192,111 @@ export class ProductController {
     if (body.image_url !== undefined) product.image_url = body.image_url;
 
     return this.productRepository.save(product);
+  }
+
+  @Roles('ADMIN')
+  @Post('products/:id/image')
+  @UseFilters(MulterExceptionFilter)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: {
+        fileSize: 2 * 1024 * 1024, // 2MB
+      },
+    }),
+  )
+  async uploadProductImage(
+    @Param('id') id: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Vui lòng tải lên tệp hình ảnh');
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      throw new BadRequestException('Dung lượng ảnh vượt quá 2MB');
+    }
+
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const mime = (file.mimetype || '').toLowerCase();
+
+    if (!allowedExtensions.includes(ext) || !allowedMimeTypes.includes(mime)) {
+      throw new BadRequestException('Chỉ chấp nhận tệp định dạng JPG, PNG hoặc WEBP');
+    }
+
+    if ((ext === '.jpg' || ext === '.jpeg') && mime !== 'image/jpeg') {
+      throw new BadRequestException('Chỉ chấp nhận tệp định dạng JPG, PNG hoặc WEBP');
+    }
+    if (ext === '.png' && mime !== 'image/png') {
+      throw new BadRequestException('Chỉ chấp nhận tệp định dạng JPG, PNG hoặc WEBP');
+    }
+    if (ext === '.webp' && mime !== 'image/webp') {
+      throw new BadRequestException('Chỉ chấp nhận tệp định dạng JPG, PNG hoặc WEBP');
+    }
+
+    const product = await this.productRepository.findOne({ where: { id } });
+    if (!product) {
+      throw new NotFoundException('Không tìm thấy sản phẩm');
+    }
+
+    const normalizedExt = ext === '.jpeg' ? '.jpg' : ext;
+    const randomFilename = `${crypto.randomUUID()}${normalizedExt}`;
+
+    const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads'));
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const targetFilePath = path.resolve(uploadDir, randomFilename);
+    if (!targetFilePath.startsWith(uploadDir + path.sep)) {
+      throw new BadRequestException('Đường dẫn lưu tệp không hợp lệ');
+    }
+
+    await fs.promises.writeFile(targetFilePath, file.buffer);
+
+    const relativeUrl = `/uploads/${randomFilename}`;
+    product.image_url = relativeUrl;
+    await this.productRepository.save(product);
+
+    return {
+      success: true,
+      message: 'Tải lên ảnh sản phẩm thành công',
+      image_url: relativeUrl,
+      product,
+    };
+  }
+
+  @Get('uploads/:filename')
+  async getUploadedFile(@Param('filename') filename: string, @Res() res: Response) {
+    if (
+      !filename ||
+      filename.includes('..') ||
+      filename.includes('/') ||
+      filename.includes('\\') ||
+      filename.includes('%')
+    ) {
+      throw new BadRequestException('Phát hiện path traversal không hợp lệ');
+    }
+
+    const safeFilename = path.basename(filename);
+    if (filename !== safeFilename) {
+      throw new BadRequestException('Phát hiện path traversal không hợp lệ');
+    }
+
+    const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads'));
+    const safePath = path.resolve(uploadDir, safeFilename);
+
+    if (!safePath.startsWith(uploadDir + path.sep)) {
+      throw new BadRequestException('Phát hiện path traversal không hợp lệ');
+    }
+
+    if (!fs.existsSync(safePath)) {
+      throw new NotFoundException('Không tìm thấy tệp ảnh');
+    }
+
+    return res.sendFile(safePath);
   }
 
   @Roles('ADMIN')
