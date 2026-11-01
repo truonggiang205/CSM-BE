@@ -1938,6 +1938,369 @@ async function runSuite() {
   }
 
   // ============================================================================
+  // NHÓM 8: TÌM KIẾM, LỌC SẢN PHẨM PHÍA SERVER, UPLOAD ẢNH & AN TOÀN HỆ THỐNG
+  // ============================================================================
+  console.log('\n--- NHÓM 8: TÌM KIẾM, LỌC SẢN PHẨM PHÍA SERVER, UPLOAD ẢNH & AN TOÀN HỆ THỐNG ---');
+
+  const GATEWAY_ROOT = BASE_URL.replace(/\/api\/v1\/?$/, '');
+  let uploadedImageUrl = '';
+  let uploadedImageFilename = '';
+
+  // 8.1 GET /products - Trả về cấu trúc phân trang chuẩn { items, total, page, limit, totalPages }
+  await testCase(
+    '8.1 GET /products - Cấu trúc phân trang chuẩn { items, total, page, limit, totalPages }',
+    {
+      expectedStatus: 200,
+      assertFn: (d) =>
+        Array.isArray(d.items) &&
+        typeof d.total === 'number' &&
+        d.page === 1 &&
+        d.limit === 5 &&
+        typeof d.totalPages === 'number',
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?page=1&limit=5`);
+    }
+  );
+
+  // 8.2 GET /products?q=... - Tìm kiếm theo tên sản phẩm
+  await testCase(
+    '8.2 GET /products?q=... - Tìm kiếm sản phẩm theo tên',
+    {
+      expectedStatus: 200,
+      assertFn: (d) =>
+        d.items.length > 0 && d.items.some((p) => p.name.includes('Trà Sữa Trân Châu')),
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?q=${encodeURIComponent('Trà Sữa')}`);
+    }
+  );
+
+  // 8.3 GET /products?q=... - Tìm kiếm theo SKU sản phẩm
+  await testCase(
+    '8.3 GET /products?q=... - Tìm kiếm sản phẩm theo SKU',
+    {
+      expectedStatus: 200,
+      assertFn: (d) =>
+        d.items.length > 0 && d.items.some((p) => p.sku === testProduct.sku),
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?q=${encodeURIComponent(testProduct.sku)}`);
+    }
+  );
+
+  // 8.4 GET /products?minPrice=...&maxPrice=... - Lọc theo khoảng giá hợp lệ
+  await testCase(
+    '8.4 GET /products - Lọc theo khoảng giá (minPrice & maxPrice)',
+    {
+      expectedStatus: 200,
+      assertFn: (d) =>
+        d.items.length > 0 &&
+        d.items.every((p) => Number(p.base_price) >= 30000 && Number(p.base_price) <= 40000),
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?minPrice=30000&maxPrice=40000`);
+    }
+  );
+
+  // 8.5 GET /products?sort=price_asc - Sắp xếp theo giá tăng dần
+  await testCase(
+    '8.5 GET /products?sort=price_asc - Sắp xếp theo giá tăng dần',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => {
+        if (d.items.length <= 1) return true;
+        for (let i = 1; i < d.items.length; i++) {
+          if (Number(d.items[i].base_price) < Number(d.items[i - 1].base_price)) return false;
+        }
+        return true;
+      },
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?sort=price_asc&limit=10`);
+    }
+  );
+
+  // 8.6 GET /products?sort=price_desc - Sắp xếp theo giá giảm dần
+  await testCase(
+    '8.6 GET /products?sort=price_desc - Sắp xếp theo giá giảm dần',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => {
+        if (d.items.length <= 1) return true;
+        for (let i = 1; i < d.items.length; i++) {
+          if (Number(d.items[i].base_price) > Number(d.items[i - 1].base_price)) return false;
+        }
+        return true;
+      },
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?sort=price_desc&limit=10`);
+    }
+  );
+
+  // 8.7 GET /products?sort=name - Sắp xếp theo tên sản phẩm
+  await testCase(
+    '8.7 GET /products?sort=name - Sắp xếp theo tên sản phẩm (A-Z)',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => {
+        if (d.items.length <= 1) return true;
+        for (let i = 1; i < d.items.length; i++) {
+          if (d.items[i].name.localeCompare(d.items[i - 1].name) < 0) return false;
+        }
+        return true;
+      },
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?sort=name&limit=10`);
+    }
+  );
+
+  // 8.8 GET /products?minPrice=-100 - minPrice âm -> Từ chối 400 Bad Request
+  await testCase(
+    '8.8 GET /products?minPrice=-100 - minPrice âm -> Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?minPrice=-100`);
+    }
+  );
+
+  // 8.9 GET /products?minPrice=50000&maxPrice=10000 - minPrice > maxPrice -> Từ chối 400 Bad Request
+  await testCase(
+    '8.9 GET /products - minPrice > maxPrice vô lý -> Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?minPrice=50000&maxPrice=10000`);
+    }
+  );
+
+  // 8.10 GET /products?sort=invalid_sort - sort sai giá trị -> Từ chối 400 Bad Request
+  await testCase(
+    '8.10 GET /products?sort=invalid_sort - sort không hợp lệ -> Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?sort=invalid_sort`);
+    }
+  );
+
+  // 8.11 GET /products?page=0 - page < 1 -> Từ chối 400 Bad Request
+  await testCase(
+    '8.11 GET /products?page=0 - page nhỏ hơn 1 -> Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?page=0`);
+    }
+  );
+
+  // 8.12 GET /products?limit=-5 - limit < 1 -> Từ chối 400 Bad Request
+  await testCase(
+    '8.12 GET /products?limit=-5 - limit nhỏ hơn 1 -> Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products?limit=-5`);
+    }
+  );
+
+  // 8.13 POST /products/:id/image không gửi token -> Từ chối 401 Unauthorized
+  await testCase(
+    '8.13 POST /products/:id/image không gửi token -> Từ chối 401 Unauthorized',
+    {
+      expectedStatus: 401,
+      assertFn: (d) => d.statusCode === 401,
+    },
+    async () => {
+      const fd = new FormData();
+      fd.append('image', new Blob([Buffer.from('png-data')], { type: 'image/png' }), 'test.png');
+      return await axios.post(`${BASE_URL}/products/${productId}/image`, fd);
+    }
+  );
+
+  // 8.14 POST /products/:id/image với token CUSTOMER -> Bị từ chối 403 Forbidden
+  await testCase(
+    '8.14 POST /products/:id/image bằng token CUSTOMER -> Bị từ chối 403 Forbidden',
+    {
+      expectedStatus: 403,
+      assertFn: (d) => d.statusCode === 403,
+    },
+    async () => {
+      const fd = new FormData();
+      fd.append('image', new Blob([Buffer.from('png-data')], { type: 'image/png' }), 'test.png');
+      return await axios.post(`${BASE_URL}/products/${productId}/image`, fd, {
+        headers: { Authorization: `Bearer ${customerAccessToken}` },
+      });
+    }
+  );
+
+  // 8.15 POST /products/:id/image với token BRANCH_MANAGER -> Bị từ chối 403 Forbidden
+  await testCase(
+    '8.15 POST /products/:id/image bằng token BRANCH_MANAGER -> Bị từ chối 403 Forbidden',
+    {
+      expectedStatus: 403,
+      assertFn: (d) => d.statusCode === 403,
+    },
+    async () => {
+      const fd = new FormData();
+      fd.append('image', new Blob([Buffer.from('png-data')], { type: 'image/png' }), 'test.png');
+      return await axios.post(`${BASE_URL}/products/${productId}/image`, fd, {
+        headers: { Authorization: `Bearer ${managerAccessToken}` },
+      });
+    }
+  );
+
+  // 8.16 POST /products/:id/image với file sai định dạng (.exe) -> Từ chối 400 Bad Request
+  await testCase(
+    '8.16 POST /products/:id/image với tệp sai định dạng (.exe) -> Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      const fd = new FormData();
+      fd.append('image', new Blob([Buffer.from('malicious-exe')], { type: 'application/octet-stream' }), 'trojan.exe');
+      return await axios.post(`${BASE_URL}/products/${productId}/image`, fd, {
+        headers: { Authorization: `Bearer ${adminAccessToken}` },
+      });
+    }
+  );
+
+  // 8.17 POST /products/:id/image với file dung lượng vượt quá 2MB -> Từ chối 400 Bad Request
+  await testCase(
+    '8.17 POST /products/:id/image với file dung lượng quá 2MB -> Từ chối 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      const fd = new FormData();
+      const largeBytes = Buffer.alloc(2.5 * 1024 * 1024);
+      fd.append('image', new Blob([largeBytes], { type: 'image/jpeg' }), 'large.jpg');
+      return await axios.post(`${BASE_URL}/products/${productId}/image`, fd, {
+        headers: { Authorization: `Bearer ${adminAccessToken}` },
+      });
+    }
+  );
+
+  // 8.18 POST /products/:id/image với file PNG hợp lệ (< 2MB) bằng ADMIN -> Thành công 201/200
+  await testCase(
+    '8.18 POST /products/:id/image bằng ADMIN với ảnh PNG hợp lệ (< 2MB) -> Thành công, trả image_url',
+    {
+      expectedStatus: [200, 201],
+      assertFn: (d) => {
+        if (!d.image_url || !d.image_url.startsWith('/uploads/')) return false;
+        uploadedImageUrl = d.image_url;
+        uploadedImageFilename = path.basename(d.image_url);
+        return true;
+      },
+    },
+    async () => {
+      const fd = new FormData();
+      const samplePng = Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+        0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41,
+        0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+        0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+        0x42, 0x60, 0x82,
+      ]);
+      fd.append('image', new Blob([samplePng], { type: 'image/png' }), 'sample-product.png');
+      return await axios.post(`${BASE_URL}/products/${productId}/image`, fd, {
+        headers: { Authorization: `Bearer ${adminAccessToken}` },
+      });
+    }
+  );
+
+  // 8.19 GET /products/:id -> Cột image_url đã được cập nhật đường dẫn tương đối trong DB
+  await testCase(
+    '8.19 GET /products/:id - Xác nhận image_url đã cập nhật đường dẫn tương đối trong DB',
+    {
+      expectedStatus: 200,
+      assertFn: (d) => d.image_url === uploadedImageUrl,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}/products/${productId}`);
+    }
+  );
+
+  // 8.20 GET ảnh vừa upload qua Gateway (GET /uploads/:filename) -> Phục vụ ảnh công khai HTTP 200 OK
+  await testCase(
+    '8.20 GET ảnh trực tiếp qua Gateway (GET /uploads/:filename) -> Phục vụ công khai 200 OK',
+    {
+      expectedStatus: 200,
+      assertFn: () => true,
+    },
+    async () => {
+      return await axios.get(`${GATEWAY_ROOT}${uploadedImageUrl}`);
+    }
+  );
+
+  // 8.21 GET ảnh qua Gateway với tiền tố api/v1 (GET /api/v1/uploads/:filename) -> Phục vụ ảnh công khai HTTP 200 OK
+  await testCase(
+    '8.21 GET ảnh qua tiền tố api/v1 (GET /api/v1/uploads/:filename) -> Phục vụ công khai 200 OK',
+    {
+      expectedStatus: 200,
+      assertFn: () => true,
+    },
+    async () => {
+      return await axios.get(`${BASE_URL}${uploadedImageUrl}`);
+    }
+  );
+
+  // 8.22 Chống Path Traversal: GET /uploads/../../etc/passwd -> Bị chặn 400 Bad Request
+  await testCase(
+    '8.22 Tấn công Path Traversal: GET /uploads/..%2F..%2Fetc%2Fpasswd -> Bị chặn 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      return await axios.get(`${GATEWAY_ROOT}/uploads/..%2F..%2Fetc%2Fpasswd`);
+    }
+  );
+
+  // 8.23 Chống Path Traversal: GET /uploads/%2e%2e/uploads -> Bị chặn 400 Bad Request
+  await testCase(
+    '8.23 Tấn công Path Traversal: GET /uploads/%2e%2e/uploads -> Bị chặn 400 Bad Request',
+    {
+      expectedStatus: 400,
+      assertFn: (d) => d.statusCode === 400,
+    },
+    async () => {
+      return await axios.get(`${GATEWAY_ROOT}/uploads/%2e%2e/uploads`);
+    }
+  );
+
+  // 8.24 GET ảnh không tồn tại (GET /uploads/non-existent-img.png) -> Trả về 404 Not Found
+  await testCase(
+    '8.24 GET ảnh không tồn tại (GET /uploads/non-existent-img.png) -> Trả về 404 Not Found',
+    {
+      expectedStatus: 404,
+      assertFn: (d) => d.statusCode === 404,
+    },
+    async () => {
+      return await axios.get(`${GATEWAY_ROOT}/uploads/non-existent-img-12345.png`);
+    }
+  );
+
+  // ============================================================================
   // YÊU CẦU DỌN DẸP TOÀN BỘ DỮ LIỆU TEST KHI BẬT --cleanup
   // ============================================================================
   if (shouldCleanup) {
@@ -2022,6 +2385,16 @@ async function runSuite() {
             [productId]
           );
           console.log(`   ✨ Đã dọn dẹp ${delProd.affectedRows} sản phẩm kiểm thử trong Product DB`);
+        }
+                if (uploadedImageFilename) {
+          const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads');
+          const testImgPath = path.join(uploadDir, uploadedImageFilename);
+          if (fs.existsSync(testImgPath)) {
+            try {
+              fs.unlinkSync(testImgPath);
+              console.log(`   ✨ Đã dọn dẹp file ảnh kiểm thử: ${uploadedImageFilename}`);
+            } catch (e) {}
+          }
         }
         await prodConn.end();
       } catch (err) {
