@@ -11,7 +11,7 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
   app.setGlobalPrefix('api/v1', {
-    exclude: ['docs', 'docs/(.*)'],
+    exclude: ['docs', 'docs/(.*)', 'uploads', 'uploads/(.*)'],
   });
 
   // Chỉ bật Swagger trong môi trường dev hoặc khi ENABLE_SWAGGER=true
