@@ -1,0 +1,138 @@
+﻿
+> csm-be@1.0.0 test
+> jest --runInBand
+
+node.exe : PASS apps/product-service/src/product.spec.ts (5.74 s)
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PASS apps/produ...pec.ts (5.74 s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+PASS apps/auth-service/src/auth.spec.ts
+PASS apps/order-service/src/order-state-machine.spec.ts
+  ● Console
+
+    console.log
+      [OrderService] Đơn hàng order-sm-01 được xác nhận, gọi confirm-deduct...
+
+      at OrderController.updateOrderStatus (apps/order-service/src/order.controller.ts:270:17)
+
+    console.log
+      [OrderService] Đơn hàng order-sm-01 huỷ khi đang PENDING, gọi release-stock...
+
+      at OrderController.updateOrderStatus (apps/order-service/src/order.controller.ts:290:17)
+
+PASS apps/inventory-service/src/inventory-idempotency.spec.ts
+PASS apps/order-service/src/order-query.spec.ts
+PASS apps/inventory-service/src/inventory-concurrency.spec.ts
+PASS apps/order-service/src/order-saga.spec.ts
+  ● Console
+
+    console.log
+      [OrderService] Gọi Inventory Service (http://localhost:3003) để giữ kho (reserve-stock)...
+
+      at OrderController.createOrder (apps/order-service/src/order.controller.ts:84:15)
+
+    console.error
+      [OrderService] Lưu DB thất bại, đang rollback release-stock...
+
+    [0m [90m 125 |[39m     } [36mcatch[39m (dbError) {
+     [90m 126 |[39m       [90m// SAGA PATTERN: BƯỚC 2 BỊ LỖI -> GỌI SAGA BÙ TRỪ GIẢI PHÓNG KHO (RELEASE STOCK)[39m
+    [31m[1m>[22m[39m[90m 127 |[39m       console[33m.[39merror([32m`[OrderService] Lưu DB thất bại, đang 
+rollback release-stock...`[39m)[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 128 |[39m       [36mtry[39m {
+     [90m 129 |[39m         [36mawait[39m 
+axios[33m.[39mpost([32m`${INVENTORY_SERVICE_URL}/inventory/release-stock`[39m[33m,[39m {
+     [90m 130 |[39m           branchId[33m:[39m branchId[33m.[39mtoString()[33m,[39m[0m
+
+      at OrderController.createOrder (apps/order-service/src/order.controller.ts:127:15)
+      at Object.<anonymous> (apps/order-service/src/order-saga.spec.ts:113:5)
+
+    console.log
+      ✅ XÁC NHẬN SAGA THÀNH CÔNG: Khi DB lỗi sau khi reserve, release-stock đã được gọi với:
+
+      at Object.<anonymous> (apps/order-service/src/order-saga.spec.ts:131:13)
+
+    console.log
+         - branchId: br-01
+
+      at Object.<anonymous> (apps/order-service/src/order-saga.spec.ts:132:13)
+
+    console.log
+         - referenceId: cc21d6f5-abb8-469c-a7ac-f35ebb7746dc
+
+      at Object.<anonymous> (apps/order-service/src/order-saga.spec.ts:133:13)
+
+    console.log
+         - items hoàn kho: [ { productId: 'prod-001', quantity: 2 } ]
+
+      at Object.<anonymous> (apps/order-service/src/order-saga.spec.ts:134:13)
+
+PASS apps/payment-service/src/payment.spec.ts
+  ● Console
+
+    console.log
+      [PaymentService] Yêu cầu tạo thanh toán cho Order: order-123, Method: MOMO
+
+      at PaymentController.createPayment (apps/payment-service/src/payment.controller.ts:109:13)
+
+    console.log
+      [PaymentService] Yêu cầu tạo thanh toán cho Order: order-admin, Method: ATM
+
+      at PaymentController.createPayment (apps/payment-service/src/payment.controller.ts:109:13)
+
+    console.log
+      [PaymentService] Đang xử lý thanh toán mô phỏng cho đơn hàng: order-cod
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:325:13)
+
+    console.log
+      [PaymentService] Đang xử lý thanh toán mô phỏng cho đơn hàng: order-cancelled
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:325:13)
+
+    console.log
+      [PaymentService] Đang xử lý thanh toán mô phỏng cho đơn hàng: order-paid
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:325:13)
+
+    console.log
+      [PaymentService] Đơn hàng order-paid đã ở trạng thái PAID. Trả kết quả idempotent không thay đổi trạng thái.
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:355:15)
+
+    console.log
+      [PaymentService] Đang xử lý thanh toán mô phỏng cho đơn hàng: order-confirmed
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:325:13)
+
+    console.log
+      [PaymentService] Đơn hàng order-confirmed đã ở trạng thái CONFIRMED. Trả kết quả idempotent không thay đổi trạng 
+thái.
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:355:15)
+
+    console.log
+      [PaymentService] Đang xử lý thanh toán mô phỏng cho đơn hàng: order-pending
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:325:13)
+
+    console.log
+      [PaymentService] Chuyển đơn order-pending từ PENDING -> CONFIRMED...
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:365:15)
+
+    console.log
+      [PaymentService] Chuyển đơn order-pending từ CONFIRMED -> PAID...
+
+      at PaymentController.processPaymentSuccess (apps/payment-service/src/payment.controller.ts:372:15)
+
+PASS apps/inventory-service/src/roles-guard.spec.ts
+
+Test Suites: 9 passed, 9 total
+Tests:       80 passed, 80 total
+Snapshots:   0 total
+Time:        16.706 s, estimated 17 s
+Ran all test suites.
