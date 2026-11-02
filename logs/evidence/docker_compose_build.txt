@@ -1,0 +1,754 @@
+﻿docker :  Image csm-be-frontend Building 
+At line:1 char:1
++ docker compose up -d --build 2>&1 | Tee-Object -FilePath logs\evidenc ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Image csm-be-frontend Building :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Image csm-be-payment-service Building 
+ Image csm-be-inventory-service Building 
+ Image csm-be-notification-service Building 
+ Image csm-be-api-gateway Building 
+ Image csm-be-auth-service Building 
+ Image csm-be-product-service Building 
+ Image csm-be-order-service Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 3.67kB done
+#1 DONE 0.0s
+
+#2 [product-service internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.65kB 0.0s done
+#2 DONE 0.1s
+
+#3 [inventory-service internal] load build definition from Dockerfile
+#3 transferring dockerfile: 1.66kB 0.0s done
+#3 DONE 0.1s
+
+#4 [payment-service internal] load build definition from Dockerfile
+#4 transferring dockerfile: 1.65kB done
+#4 DONE 0.2s
+
+#5 [frontend internal] load build definition from Dockerfile
+#5 transferring dockerfile: 396B done
+#5 DONE 0.2s
+
+#6 [api-gateway internal] load build definition from Dockerfile
+#6 transferring dockerfile: 1.65kB done
+#6 DONE 0.2s
+
+#7 [order-service internal] load build definition from Dockerfile
+#7 transferring dockerfile: 1.65kB done
+#7 DONE 0.2s
+
+#8 [notification-service internal] load build definition from Dockerfile
+#8 transferring dockerfile: 1.66kB done
+#8 DONE 0.2s
+
+#9 [auth-service internal] load build definition from Dockerfile
+#9 transferring dockerfile: 1.72kB done
+#9 DONE 0.2s
+
+#10 [frontend internal] load metadata for docker.io/library/nginx:alpine
+#10 DONE 0.1s
+
+#11 [auth-service internal] load metadata for docker.io/library/node:22-alpine
+#11 ...
+
+#12 [auth] library/node:pull token for registry-1.docker.io
+#12 DONE 0.0s
+
+#13 [frontend internal] load metadata for docker.io/library/node:20-alpine
+#13 DONE 2.0s
+
+#11 [auth-service internal] load metadata for docker.io/library/node:22-alpine
+#11 ...
+
+#14 [frontend internal] load .dockerignore
+#14 transferring context: 79B done
+#14 DONE 0.0s
+
+#15 [frontend builder 1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#15 resolve docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 0.1s done
+#15 DONE 0.1s
+
+#16 [frontend runner 1/3] FROM docker.io/library/nginx:alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
+#16 resolve docker.io/library/nginx:alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2 0.1s done
+#16 DONE 0.1s
+
+#17 [frontend internal] load build context
+#17 ...
+
+#11 [payment-service internal] load metadata for docker.io/library/node:22-alpine
+#11 DONE 3.3s
+
+#17 [frontend internal] load build context
+#17 ...
+
+#18 [notification-service internal] load .dockerignore
+#18 transferring context: 79B done
+#18 DONE 0.0s
+
+#19 [product-service internal] load build context
+#19 DONE 0.0s
+
+#17 [frontend internal] load build context
+#17 transferring context: 38.13MB 1.8s done
+#17 DONE 1.8s
+
+#20 [inventory-service builder  1/14] FROM docker.io/library/node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+#20 resolve docker.io/library/node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 0.0s done
+#20 sha256:304511616d6a6d472222f696b9045e20dc90e8043b2a8ba2acb61746595781f3 0B / 442B 0.2s
+#20 sha256:7246d4c6a55dd0f8dd00d2e63aece3a68d91e6a5d04c4e748fc2706897d96312 0B / 1.26MB 0.2s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 0B / 56.22MB 0.2s
+#20 sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788 0B / 3.85MB 0.2s
+#20 ...
+
+#21 [frontend builder 2/6] WORKDIR /app
+#21 CACHED
+
+#20 [inventory-service builder  1/14] FROM docker.io/library/node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+#20 sha256:304511616d6a6d472222f696b9045e20dc90e8043b2a8ba2acb61746595781f3 442B / 442B 0.3s done
+#20 sha256:7246d4c6a55dd0f8dd00d2e63aece3a68d91e6a5d04c4e748fc2706897d96312 1.26MB / 1.26MB 0.4s done
+#20 ...
+
+#22 [frontend builder 3/6] COPY package*.json ./
+#22 DONE 0.2s
+
+#20 [inventory-service builder  1/14] FROM docker.io/library/node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+#20 sha256:7246d4c6a55dd0f8dd00d2e63aece3a68d91e6a5d04c4e748fc2706897d96312 1.26MB / 1.26MB 0.4s done
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 3.15MB / 56.22MB 0.7s
+#20 sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788 1.05MB / 3.85MB 0.7s
+#20 sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788 3.15MB / 3.85MB 0.9s
+#20 ...
+
+#19 [order-service internal] load build context
+#19 transferring context: 2.83MB 1.2s done
+#19 DONE 1.3s
+
+#20 [inventory-service builder  1/14] FROM docker.io/library/node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 7.34MB / 56.22MB 1.0s
+#20 sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788 3.85MB / 3.85MB 0.9s done
+#20 extracting sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788
+#20 extracting sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788 0.3s done
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 15.73MB / 56.22MB 1.5s
+#20 extracting sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788 0.3s done
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 19.92MB / 56.22MB 1.6s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 23.07MB / 56.22MB 1.8s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 26.21MB / 56.22MB 1.9s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 30.41MB / 56.22MB 2.1s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 34.60MB / 56.22MB 2.2s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 38.80MB / 56.22MB 2.4s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 42.99MB / 56.22MB 2.7s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 46.14MB / 56.22MB 2.8s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 49.28MB / 56.22MB 3.0s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 53.48MB / 56.22MB 3.1s
+#20 sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 56.22MB / 56.22MB 3.3s done
+#20 extracting sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1
+#20 extracting sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 2.4s done
+#20 extracting sha256:8776aa3d2ba7247a375d06dcec03856b99dbb0e16e904a5672d3bf08c852d4f1 2.4s done
+#20 extracting sha256:7246d4c6a55dd0f8dd00d2e63aece3a68d91e6a5d04c4e748fc2706897d96312 0.1s done
+#20 extracting sha256:7246d4c6a55dd0f8dd00d2e63aece3a68d91e6a5d04c4e748fc2706897d96312 0.1s done
+#20 extracting sha256:304511616d6a6d472222f696b9045e20dc90e8043b2a8ba2acb61746595781f3 0.0s done
+#20 DONE 6.2s
+
+#23 [inventory-service builder  2/14] WORKDIR /usr/src/app
+#23 DONE 0.4s
+
+#24 [product-service runner  3/12] COPY package*.json ./
+#24 DONE 0.1s
+
+#25 [inventory-service runner  4/12] COPY apps/api-gateway/package*.json ./apps/api-gateway/
+#25 DONE 0.1s
+
+#26 [order-service builder  3/14] COPY package*.json tsconfig.json ./
+#26 DONE 0.1s
+
+#27 [notification-service builder  4/14] COPY apps/api-gateway/package*.json ./apps/api-gateway/
+#27 DONE 0.1s
+
+#28 [api-gateway builder  5/14] COPY apps/auth-service/package*.json ./apps/auth-service/
+#28 DONE 0.1s
+
+#29 [notification-service runner  5/12] COPY apps/auth-service/package*.json ./apps/auth-service/
+#29 DONE 0.1s
+
+#30 [payment-service builder  6/14] COPY apps/inventory-service/package*.json ./apps/inventory-service/
+#30 DONE 0.1s
+
+#31 [auth-service runner  6/12] COPY apps/inventory-service/package*.json ./apps/inventory-service/
+#31 DONE 0.1s
+
+#32 [payment-service runner  7/12] COPY apps/notification-service/package*.json ./apps/notification-service/
+#32 DONE 0.1s
+
+#33 [product-service builder  7/14] COPY apps/notification-service/package*.json ./apps/notification-service/
+#33 DONE 0.1s
+
+#34 [api-gateway runner  8/12] COPY apps/order-service/package*.json ./apps/order-service/
+#34 DONE 0.1s
+
+#35 [auth-service builder  8/14] COPY apps/order-service/package*.json ./apps/order-service/
+#35 DONE 0.1s
+
+#36 [auth-service builder  9/14] COPY apps/payment-service/package*.json ./apps/payment-service/
+#36 DONE 0.1s
+
+#37 [notification-service runner  9/12] COPY apps/payment-service/package*.json ./apps/payment-service/
+#37 DONE 0.1s
+
+#38 [inventory-service builder 10/14] COPY apps/product-service/package*.json ./apps/product-service/
+#38 DONE 0.1s
+
+#39 [order-service runner 10/12] COPY apps/product-service/package*.json ./apps/product-service/
+#39 DONE 0.1s
+
+#40 [payment-service runner 11/12] RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+#40 2.370 npm warn ERESOLVE overriding peer dependency
+#40 2.373 npm warn While resolving: @nestjs/mapped-types@2.0.5
+#40 2.373 npm warn Found: class-validator@0.15.1
+#40 2.373 npm warn node_modules/class-validator
+#40 2.373 npm warn   class-validator@"^0.15.1" from the root project
+#40 2.373 npm warn   2 more (@nestjs/common, @nestjs/swagger)
+#40 2.373 npm warn
+#40 2.373 npm warn Could not resolve dependency:
+#40 2.373 npm warn peerOptional class-validator@"^0.13.0 || ^0.14.0" from @nestjs/mapped-types@2.0.5
+#40 2.373 npm warn node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+#40 2.373 npm warn   @nestjs/mapped-types@"2.0.5" from @nestjs/swagger@7.4.2
+#40 2.373 npm warn   node_modules/@nestjs/swagger
+#40 2.373 npm warn
+#40 2.373 npm warn Conflicting peer dependency: class-validator@0.14.4
+#40 2.373 npm warn node_modules/class-validator
+#40 2.373 npm warn   peerOptional class-validator@"^0.13.0 || ^0.14.0" from @nestjs/mapped-types@2.0.5
+#40 2.373 npm warn   node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+#40 2.373 npm warn     @nestjs/mapped-types@"2.0.5" from @nestjs/swagger@7.4.2
+#40 2.373 npm warn     node_modules/@nestjs/swagger
+#40 ...
+
+#41 [frontend builder 4/6] RUN npm ci
+#41 ...
+
+#42 [api-gateway builder 11/14] RUN --mount=type=cache,target=/root/.npm npm ci
+#42 2.373 npm warn ERESOLVE overriding peer dependency
+#42 2.375 npm warn While resolving: @nestjs/mapped-types@2.0.5
+#42 2.375 npm warn Found: class-validator@0.15.1
+#42 2.375 npm warn node_modules/class-validator
+#42 2.375 npm warn   class-validator@"^0.15.1" from the root project
+#42 2.375 npm warn   2 more (@nestjs/common, @nestjs/swagger)
+#42 2.375 npm warn
+#42 2.375 npm warn Could not resolve dependency:
+#42 2.375 npm warn peerOptional class-validator@"^0.13.0 || ^0.14.0" from @nestjs/mapped-types@2.0.5
+#42 2.375 npm warn node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+#42 2.375 npm warn   @nestjs/mapped-types@"2.0.5" from @nestjs/swagger@7.4.2
+#42 2.375 npm warn   node_modules/@nestjs/swagger
+#42 2.375 npm warn
+#42 2.375 npm warn Conflicting peer dependency: class-validator@0.14.4
+#42 2.375 npm warn node_modules/class-validator
+#42 2.375 npm warn   peerOptional class-validator@"^0.13.0 || ^0.14.0" from @nestjs/mapped-types@2.0.5
+#42 2.375 npm warn   node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+#42 2.375 npm warn     @nestjs/mapped-types@"2.0.5" from @nestjs/swagger@7.4.2
+#42 2.375 npm warn     node_modules/@nestjs/swagger
+#42 ...
+
+#40 [payment-service runner 11/12] RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+#40 8.906 npm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+#40 9.132 npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+#40 ...
+
+#41 [frontend builder 4/6] RUN npm ci
+#41 16.01 
+#41 16.01 added 212 packages, and audited 213 packages in 15s
+#41 16.01 
+#41 16.01 35 packages are looking for funding
+#41 16.01   run `npm fund` for details
+#41 16.08 
+#41 16.08 7 vulnerabilities (4 moderate, 3 high)
+#41 16.08 
+#41 16.08 To address issues that do not require attention, run:
+#41 16.08   npm audit fix
+#41 16.08 
+#41 16.08 To address all issues (including breaking changes), run:
+#41 16.08   npm audit fix --force
+#41 16.08 
+#41 16.08 Run `npm audit` for details.
+#41 16.08 npm notice
+#41 16.08 npm notice New major version of npm available! 10.8.2 -> 12.2.1
+#41 16.08 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#41 16.08 npm notice To update run: npm install -g npm@12.2.1
+#41 16.08 npm notice
+#41 DONE 17.2s
+
+#43 [frontend builder 5/6] COPY . .
+#43 DONE 0.6s
+
+#40 [payment-service runner 11/12] RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+#40 ...
+
+#42 [api-gateway builder 11/14] RUN --mount=type=cache,target=/root/.npm npm ci
+#42 13.53 npm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+#42 13.96 npm warn deprecated glob@10.4.5: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+#42 14.33 npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+#42 ...
+
+#40 [auth-service runner 11/12] RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+#40 16.96 
+#40 16.96 added 272 packages, and audited 280 packages in 16s
+#40 16.96 
+#40 16.96 63 packages are looking for funding
+#40 16.96   run `npm fund` for details
+#40 17.02 
+#40 17.02 17 vulnerabilities (11 moderate, 6 high)
+#40 17.02 
+#40 17.02 To address issues that do not require attention, run:
+#40 17.02   npm audit fix
+#40 17.02 
+#40 17.02 To address all issues (including breaking changes), run:
+#40 17.02   npm audit fix --force
+#40 17.02 
+#40 17.02 Run `npm audit` for details.
+#40 DONE 17.8s
+
+#44 [frontend builder 6/6] RUN npm run build
+#44 0.849 
+#44 0.849 > csm-fe@1.0.0 build
+#44 0.849 > tsc -b && vite build
+#44 0.849 
+#44 14.17 vite v5.4.21 building for production...
+#44 14.75 transforming...
+#44 ...
+
+#42 [api-gateway builder 11/14] RUN --mount=type=cache,target=/root/.npm npm ci
+#42 28.33 
+#42 28.33 added 710 packages, and audited 718 packages in 28s
+#42 28.33 
+#42 28.33 130 packages are looking for funding
+#42 28.33   run `npm fund` for details
+#42 28.60 
+#42 28.60 52 vulnerabilities (4 low, 35 moderate, 10 high, 3 critical)
+#42 28.60 
+#42 28.60 To address issues that do not require attention, run:
+#42 28.60   npm audit fix
+#42 28.60 
+#42 28.60 To address all issues (including breaking changes), run:
+#42 28.60   npm audit fix --force
+#42 28.60 
+#42 28.60 Run `npm audit` for details.
+#42 28.60 npm notice
+#42 28.60 npm notice New major version of npm available! 10.9.9 -> 12.2.1
+#42 28.60 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#42 28.60 npm notice To update run: npm install -g npm@12.2.1
+#42 28.60 npm notice
+#42 DONE 29.3s
+
+#45 [order-service builder 12/14] COPY apps/ ./apps/
+#45 DONE 0.6s
+
+#46 [api-gateway builder 13/14] COPY libs/ ./libs/
+#46 DONE 0.1s
+
+#47 [api-gateway builder 14/14] RUN npm --prefix apps/api-gateway run build
+#47 1.817 
+#47 1.817 > csm-api-gateway@1.0.0 build
+#47 1.817 > nest build
+#47 1.817 
+#47 ...
+
+#48 [auth-service builder 14/14] RUN npm --prefix apps/auth-service run build
+#48 2.025 
+#48 2.025 > csm-auth-service@1.0.0 build
+#48 2.025 > nest build
+#48 2.025 
+#48 ...
+
+#49 [inventory-service builder 14/14] RUN npm --prefix apps/inventory-service run build
+#49 1.721 
+#49 1.721 > csm-inventory-service@1.0.0 build
+#49 1.721 > nest build
+#49 1.721 
+#49 ...
+
+#50 [product-service builder 14/14] RUN npm --prefix apps/product-service run build
+#50 1.973 
+#50 1.973 > csm-product-service@1.0.0 build
+#50 1.973 > nest build
+#50 1.973 
+#50 ...
+
+#51 [notification-service builder 14/14] RUN npm --prefix apps/notification-service run build
+#51 1.716 
+#51 1.716 > csm-notification-service@1.0.0 build
+#51 1.716 > nest build
+#51 1.716 
+#51 ...
+
+#52 [payment-service builder 14/14] RUN npm --prefix apps/payment-service run build
+#52 1.767 
+#52 1.767 > csm-payment-service@1.0.0 build
+#52 1.767 > nest build
+#52 1.767 
+#52 ...
+
+#53 [order-service builder 14/14] RUN npm --prefix apps/order-service run build
+#53 1.581 
+#53 1.581 > csm-order-service@1.0.0 build
+#53 1.581 > nest build
+#53 1.581 
+#53 ...
+
+#51 [notification-service builder 14/14] RUN npm --prefix apps/notification-service run build
+#51 15.49 npm notice
+#51 15.49 npm notice New major version of npm available! 10.9.9 -> 12.2.1
+#51 15.49 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#51 15.49 npm notice To update run: npm install -g npm@12.2.1
+#51 15.49 npm notice
+#51 DONE 15.6s
+
+#52 [payment-service builder 14/14] RUN npm --prefix apps/payment-service run build
+#52 ...
+
+#54 [notification-service runner 12/12] COPY --from=builder /usr/src/app/apps/notification-service/dist ./dist
+#54 DONE 0.8s
+
+#44 [frontend builder 6/6] RUN npm run build
+#44 ...
+
+#55 [notification-service] exporting to image
+#55 exporting layers
+#55 ...
+
+#47 [api-gateway builder 14/14] RUN npm --prefix apps/api-gateway run build
+#47 17.53 npm notice
+#47 17.53 npm notice New major version of npm available! 10.9.9 -> 12.2.1
+#47 17.53 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#47 17.53 npm notice To update run: npm install -g npm@12.2.1
+#47 17.53 npm notice
+#47 DONE 17.7s
+
+#56 [api-gateway runner 12/12] COPY --from=builder /usr/src/app/apps/api-gateway/dist ./dist
+#56 DONE 0.1s
+
+#57 [api-gateway] exporting to image
+#57 ...
+
+#52 [payment-service builder 14/14] RUN npm --prefix apps/payment-service run build
+#52 18.58 npm notice
+#52 18.58 npm notice New major version of npm available! 10.9.9 -> 12.2.1
+#52 18.58 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#52 18.58 npm notice To update run: npm install -g npm@12.2.1
+#52 18.58 npm notice
+#52 DONE 18.7s
+
+#58 [payment-service runner 12/12] COPY --from=builder /usr/src/app/apps/payment-service/dist ./dist
+#58 DONE 0.1s
+
+#59 [payment-service] exporting to image
+#59 ...
+
+#48 [auth-service builder 14/14] RUN npm --prefix apps/auth-service run build
+#48 20.15 npm notice
+#48 20.15 npm notice New major version of npm available! 10.9.9 -> 12.2.1
+#48 20.15 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#48 20.15 npm notice To update run: npm install -g npm@12.2.1
+#48 20.15 npm notice
+#48 DONE 20.2s
+
+#50 [product-service builder 14/14] RUN npm --prefix apps/product-service run build
+#50 20.14 npm notice
+#50 20.14 npm notice New major version of npm available! 10.9.9 -> 12.2.1
+#50 20.14 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#50 20.14 npm notice To update run: npm install -g npm@12.2.1
+#50 20.14 npm notice
+#50 DONE 20.3s
+
+#60 [product-service runner 12/12] COPY --from=builder /usr/src/app/apps/product-service/dist ./dist
+#60 DONE 0.1s
+
+#61 [auth-service runner 12/12] COPY --from=builder /usr/src/app/apps/auth-service/dist ./dist
+#61 DONE 0.1s
+
+#53 [order-service builder 14/14] RUN npm --prefix apps/order-service run build
+#53 20.56 npm notice
+#53 20.56 npm notice New major version of npm available! 10.9.9 -> 12.2.1
+#53 20.56 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#53 20.56 npm notice To update run: npm install -g npm@12.2.1
+#53 20.56 npm notice
+#53 DONE 20.6s
+
+#62 [order-service runner 12/12] COPY --from=builder /usr/src/app/apps/order-service/dist ./dist
+#62 DONE 0.1s
+
+#63 [auth-service] exporting to image
+#63 ...
+
+#44 [frontend builder 6/6] RUN npm run build
+#44 37.09 ✓ 2735 modules transformed.
+#44 39.22 rendering chunks...
+#44 39.62 computing gzip size...
+#44 39.67 dist/index.html                               1.21 kB │ gzip:  0.58 kB
+#44 39.67 dist/assets/index-CVHl6KdX.css               68.64 kB │ gzip: 12.18 kB
+#44 39.67 dist/assets/authApi-DwEwQQ-l.js               0.23 kB │ gzip:  0.16 kB
+#44 39.67 dist/assets/Skeleton-CWmPcfAc.js              0.29 kB │ gzip:  0.25 kB
+#44 39.67 dist/assets/Label-C8C2rRdf.js                 0.33 kB │ gzip:  0.25 kB
+#44 39.67 dist/assets/Badge-ZMjpKD19.js                 0.98 kB │ gzip:  0.46 kB
+#44 39.67 dist/assets/Card-DkWudqsz.js                  1.04 kB │ gzip:  0.41 kB
+#44 39.67 dist/assets/orderApi-CJoYZNUA.js              1.17 kB │ gzip:  0.51 kB
+#44 39.67 dist/assets/UnauthorizedPage-DU6y2kum.js      1.35 kB │ gzip:  0.72 kB
+#44 39.67 dist/assets/OrderStatusBadge-BUafdCFF.js      1.81 kB │ gzip:  0.57 kB
+#44 39.67 dist/assets/NotFoundPage-By3IpiIN.js          1.96 kB │ gzip:  0.92 kB
+#44 39.67 dist/assets/LoginPage-BW7TZMAP.js             3.02 kB │ gzip:  1.38 kB
+#44 39.67 dist/assets/RegisterPage-DrwUbVY9.js          4.09 kB │ gzip:  1.70 kB
+#44 39.67 dist/assets/MyOrdersPage-DpkpNE3D.js          7.52 kB │ gzip:  2.73 kB
+#44 39.67 dist/assets/ProductCard-BUBJtGx7.js           9.17 kB │ gzip:  3.00 kB
+#44 39.67 dist/assets/ProfilePage-BL0xx0Ps.js           9.61 kB │ gzip:  2.87 kB
+#44 39.67 dist/assets/DashboardPage-DGTf9yys.js        10.29 kB │ gzip:  3.47 kB
+#44 39.67 dist/assets/OrderDetailPage-DY133Epo.js      13.41 kB │ gzip:  4.30 kB
+#44 39.67 dist/assets/CartPage-NLnMO_WT.js             13.61 kB │ gzip:  4.15 kB
+#44 39.67 dist/assets/OrderListPage-6Xzb2CM_.js        15.67 kB │ gzip:  4.71 kB
+#44 39.67 dist/assets/CheckoutPage-DUF4D3pp.js         16.70 kB │ gzip:  5.42 kB
+#44 39.67 dist/assets/ProductListPage-D7FUCuEB.js      22.09 kB │ gzip:  6.41 kB
+#44 39.67 dist/assets/ProductDetailPage-Dhz3xS76.js    22.45 kB │ gzip:  6.29 kB
+#44 39.67 dist/assets/InventoryPage-DtvCF8xA.js        23.96 kB │ gzip:  6.57 kB
+#44 39.67 dist/assets/vendor-d3-BmRV05Rd.js            63.16 kB │ gzip: 20.82 kB
+#44 39.67 dist/assets/HomePage-BiYhnwtj.js             69.67 kB │ gzip: 19.53 kB
+#44 39.67 dist/assets/vendor-query-store-DrSjv0cs.js   92.48 kB │ gzip: 31.45 kB
+#44 39.67 dist/assets/index-nV_7Rxya.js               104.46 kB │ gzip: 28.56 kB
+#44 39.67 dist/assets/vendor-motion-BkwfRJnY.js       138.67 kB │ gzip: 45.99 kB
+#44 39.67 dist/assets/vendor-react-DyWwJpmM.js        252.12 kB │ gzip: 78.47 kB
+#44 39.67 dist/assets/vendor-recharts-CgO5LsNW.js     352.01 kB │ gzip: 96.82 kB
+#44 39.67 ✓ built in 25.45s
+#44 DONE 39.9s
+
+#64 [order-service] exporting to image
+#64 ...
+
+#49 [inventory-service builder 14/14] RUN npm --prefix apps/inventory-service run build
+#49 21.18 npm notice
+#49 21.18 npm notice New major version of npm available! 10.9.9 -> 12.2.1
+#49 21.18 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+#49 21.18 npm notice To update run: npm install -g npm@12.2.1
+#49 21.18 npm notice
+#49 DONE 21.2s
+
+#65 [inventory-service runner 12/12] COPY --from=builder /usr/src/app/apps/inventory-service/dist ./dist
+#65 DONE 0.1s
+
+#16 [frontend runner 1/3] FROM docker.io/library/nginx:alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
+#16 CACHED
+
+#66 [frontend runner 2/3] COPY --from=builder /app/dist /usr/share/nginx/html
+#66 DONE 0.0s
+
+#67 [inventory-service] exporting to image
+#67 ...
+
+#68 [frontend runner 3/3] COPY nginx.conf /etc/nginx/conf.d/default.conf
+#68 DONE 0.0s
+
+#69 [frontend] exporting to image
+#69 exporting layers 0.1s done
+#69 exporting manifest sha256:4156c94406feddea5f99c5f91a13abe29dfde6255970679fdc6cad8ad47f4508 0.0s done
+#69 exporting config sha256:767f2c99f770347d3ab7da17a3d7404ef9dbe4ae1da422a6584766f6e7d3b55e 0.0s done
+#69 exporting attestation manifest sha256:a5683697c1c3a40c3bb73d0d41f63c716dcaf6a5eae6197d013d298584e317bc 0.0s done
+#69 exporting manifest list sha256:4b3f971526b1c9005fa79a7c8a78b5c83845b6604b765a0ad1a32ed6360dc656 0.0s done
+#69 naming to docker.io/library/csm-be-frontend:latest done
+#69 unpacking to docker.io/library/csm-be-frontend:latest 0.1s done
+#69 DONE 0.3s
+
+#70 [product-service] exporting to image
+#70 ...
+
+#71 [frontend] resolving provenance for metadata file
+#71 DONE 0.1s
+
+#70 [product-service] exporting to image
+#70 ...
+
+#55 [notification-service] exporting to image
+#55 exporting layers 11.2s done
+#55 exporting manifest sha256:1c3e7b248949ae1f6997edcc4d176e0c4d3e741c7ac6891dc59e80a4e8532c77 0.1s done
+#55 exporting config sha256:97d5dac7f4494f0f917cce0496353d1d083d31402a14297db15ef1c599940b5c 0.1s done
+#55 exporting attestation manifest sha256:dcacbeb44a5e40aaf2c3d530e74d23331c2c9cd27a5d5479690cbea82e290832 0.1s done
+#55 exporting manifest list sha256:708a2a848764b8411e03ed19b7592df98512113767176a490fd60fa1baa1c8f7
+#55 exporting manifest list sha256:708a2a848764b8411e03ed19b7592df98512113767176a490fd60fa1baa1c8f7 0.1s done
+#55 naming to docker.io/library/csm-be-notification-service:latest 0.0s done
+#55 unpacking to docker.io/library/csm-be-notification-service:latest
+#55 ...
+
+#63 [auth-service] exporting to image
+#63 exporting layers 7.3s done
+#63 exporting manifest sha256:378064bce1c74f9c59e1b9b9e2f0ceec9c77a43c0a952ec178ffbe371d7eb87b 0.1s done
+#63 exporting config sha256:55c9597e75890b5fc4d66f0e0abb03b2283c800d95a3bfd5f0ba5daee942828b 0.1s done
+#63 exporting attestation manifest sha256:5c393fc846ed195c7e145d38244889f42b1805ebd7c80edff38c7142dcc28055 0.1s done
+#63 exporting manifest list sha256:2426fdc6ec713e6b1ce8f50c3ef0e53c2a35c3af5c3053a2c6005bc1b04e2b7d 0.1s done
+#63 naming to docker.io/library/csm-be-auth-service:latest 0.0s done
+#63 unpacking to docker.io/library/csm-be-auth-service:latest
+#63 ...
+
+#67 [inventory-service] exporting to image
+#67 exporting layers 6.3s done
+#67 exporting manifest sha256:5f469159f5bf91c30c803b77eea3d937b901f592524bdf52f06ccd51be93a7b4 0.1s done
+#67 exporting config sha256:05b13097a1963e8442416ec7a57758a09e2fad1ded4889fcb7384b5754499dfb 0.1s done
+#67 exporting attestation manifest sha256:1fe41d7511546a01103d7c8bbb263d50e9b6687730ae37e7bb7d6fb10d67f6a5 0.1s done
+#67 exporting manifest list sha256:62d10ec6b62a2b1dfb65bf464808696fd23780a0083f738b584c86e3898192e9 0.1s done
+#67 naming to docker.io/library/csm-be-inventory-service:latest 0.0s done
+#67 unpacking to docker.io/library/csm-be-inventory-service:latest
+#67 ...
+
+#59 [payment-service] exporting to image
+#59 exporting layers 8.9s done
+#59 exporting manifest sha256:56ced282e0dfbd584d2ee0c1f4565bc2b8396615f94eadb0e5cebdaa0a0e6d12 0.1s done
+#59 exporting config sha256:c561003cadbc41008fc1380ff6b5cdf4355690f2a26ed235b1006c05e9cd995d 0.1s done
+#59 exporting attestation manifest sha256:3cae7250c6cc647a15990f50505c14a6757e594240c49228097f6cea412a9c26 0.1s done
+#59 exporting manifest list sha256:576a0005fd708f8e25a28290291106f5e998df06f515220dc9ec2ad47e273cdb 0.1s done
+#59 naming to docker.io/library/csm-be-payment-service:latest 0.0s done
+#59 unpacking to docker.io/library/csm-be-payment-service:latest
+#59 ...
+
+#70 [product-service] exporting to image
+#70 exporting layers 7.3s done
+#70 exporting manifest sha256:8e984446836c1e40ab8d47725f995ddea1ef44a9dd69ac8698c8f4d86b87db9b 0.1s done
+#70 exporting config sha256:d5ba15d76cf46f7a7e067b8aea4473c82da12050e0f18c285d0326c3e2ca2db7 0.1s done
+#70 exporting attestation manifest sha256:e4b61ca87c71f18766436bede88640be630130be133164545daade0181efb095 0.1s done
+#70 exporting manifest list sha256:672870ed396f0cb251cd4a6947117858a76a4f3b61aa1e7a5087e8240c1a9cce 0.1s done
+#70 naming to docker.io/library/csm-be-product-service:latest 0.0s done
+#70 unpacking to docker.io/library/csm-be-product-service:latest
+#70 ...
+
+#64 [order-service] exporting to image
+#64 exporting layers 7.0s done
+#64 exporting manifest sha256:62806e547f76ce7aa0bde7b91ec13e26b80abdf4f1678c1838610ddf236e1208 0.1s done
+#64 exporting config sha256:ba939b41678b4b0cd2ec4b359fb3682a248fe5a647a099d94d79f975815b9161 0.1s done
+#64 exporting attestation manifest sha256:ba563aae1ec9bd85fa7c76cc369a183adf5503de749067c64444d0a5a690e202 0.1s done
+#64 exporting manifest list sha256:9d6c8ab82ea6b902f3456503c9d67c5844262bd09a77c5d20bfbc6969c7563b8 0.1s done
+#64 naming to docker.io/library/csm-be-order-service:latest 0.0s done
+#64 unpacking to docker.io/library/csm-be-order-service:latest
+#64 unpacking to docker.io/library/csm-be-order-service:latest 10.3s done
+#64 ...
+
+#57 [api-gateway] exporting to image
+#57 exporting layers 9.9s done
+#57 exporting manifest sha256:48504bae93747744ce5153ba428a0f21705c68f4bd9891e6c7bc30f860276b15 0.1s done
+#57 exporting config sha256:ff0263448e53b0b01b7d38bdb015bb44db9cf2184d3355a031db017eabd71a07 0.1s done
+#57 exporting attestation manifest sha256:39c5db8fc7a3f3995f57003d3a51f948ebad31b3a2f32d20796c37e49b11510f 0.1s done
+#57 exporting manifest list sha256:dcd5096f8ac04dc0e25275d49567a2d07e33ae136701f2e6e194417e1c4378e5 0.1s done
+#57 naming to docker.io/library/csm-be-api-gateway:latest 0.0s done
+#57 unpacking to docker.io/library/csm-be-api-gateway:latest
+#57 ...
+
+#70 [product-service] exporting to image
+#70 unpacking to docker.io/library/csm-be-product-service:latest 10.3s done
+#70 DONE 18.4s
+
+#64 [order-service] exporting to image
+#64 DONE 18.1s
+
+#67 [inventory-service] exporting to image
+#67 unpacking to docker.io/library/csm-be-inventory-service:latest 10.8s done
+#67 DONE 17.5s
+
+#63 [auth-service] exporting to image
+#63 unpacking to docker.io/library/csm-be-auth-service:latest 10.8s done
+#63 DONE 18.5s
+
+#59 [payment-service] exporting to image
+#59 unpacking to docker.io/library/csm-be-payment-service:latest 10.8s done
+#59 DONE 20.1s
+
+#57 [api-gateway] exporting to image
+#57 unpacking to docker.io/library/csm-be-api-gateway:latest 10.8s done
+#57 DONE 21.1s
+
+#55 [notification-service] exporting to image
+#55 unpacking to docker.io/library/csm-be-notification-service:latest 10.8s done
+#55 DONE 22.5s
+
+#72 [product-service] resolving provenance for metadata file
+#72 DONE 0.5s
+
+#73 [order-service] resolving provenance for metadata file
+#73 DONE 0.4s
+
+#74 [inventory-service] resolving provenance for metadata file
+#74 DONE 0.3s
+
+#75 [api-gateway] resolving provenance for metadata file
+#75 DONE 0.3s
+
+#76 [notification-service] resolving provenance for metadata file
+#76 DONE 0.2s
+
+#77 [payment-service] resolving provenance for metadata file
+#77 DONE 0.1s
+
+#78 [auth-service] resolving provenance for metadata file
+#78 DONE 0.1s
+ Image csm-be-inventory-service Built 
+ Image csm-be-order-service Built 
+ Image csm-be-auth-service Built 
+ Image csm-be-notification-service Built 
+ Image csm-be-payment-service Built 
+ Image csm-be-api-gateway Built 
+ Image csm-be-frontend Built 
+ Image csm-be-product-service Built 
+ Container csm-mysql Running 
+ Volume csm-be_product_uploads Creating 
+ Container csm-auth-service Recreate 
+ Container csm-inventory-service Recreate 
+ Container csm-notification-service Recreate 
+ Container csm-payment-service Recreate 
+ Volume csm-be_product_uploads Creating 
+ Volume csm-be_product_uploads Created 
+ Volume csm-be_product_uploads Created 
+ Container csm-product-service Recreate 
+ Container csm-payment-service Recreated 
+ Container csm-auth-service Recreated 
+ Container csm-inventory-service Recreated 
+ Container csm-notification-service Recreated 
+ Container csm-product-service Recreated 
+ Container csm-order-service Recreate 
+ Container csm-order-service Recreated 
+ Container csm-api-gateway Recreate 
+ Container csm-api-gateway Recreated 
+ Container csm-frontend Recreate 
+ Container csm-frontend Recreated 
+ Container csm-notification-service Starting 
+ Container csm-payment-service Starting 
+ Container csm-mysql Waiting 
+ Container csm-mysql Waiting 
+ Container csm-mysql Waiting 
+ Container csm-notification-service Started 
+ Container csm-payment-service Started 
+ Container csm-mysql Healthy 
+ Container csm-mysql Healthy 
+ Container csm-inventory-service Starting 
+ Container csm-auth-service Starting 
+ Container csm-mysql Healthy 
+ Container csm-product-service Starting 
+ Container csm-inventory-service Started 
+ Container csm-auth-service Started 
+ Container csm-product-service Started 
+ Container csm-product-service Waiting 
+ Container csm-mysql Waiting 
+ Container csm-inventory-service Waiting 
+ Container csm-mysql Healthy 
+ Container csm-inventory-service Healthy 
+ Container csm-product-service Healthy 
+ Container csm-order-service Starting 
+ Container csm-order-service Started 
+ Container csm-product-service Waiting 
+ Container csm-inventory-service Waiting 
+ Container csm-order-service Waiting 
+ Container csm-payment-service Waiting 
+ Container csm-notification-service Waiting 
+ Container csm-auth-service Waiting 
+ Container csm-auth-service Healthy 
+ Container csm-payment-service Healthy 
+ Container csm-notification-service Healthy 
+ Container csm-inventory-service Healthy 
+ Container csm-product-service Healthy 
+ Container csm-order-service Healthy 
+ Container csm-api-gateway Starting 
+ Container csm-api-gateway Started 
+ Container csm-api-gateway Waiting 
+ Container csm-api-gateway Healthy 
+ Container csm-frontend Starting 
+ Container csm-frontend Started 

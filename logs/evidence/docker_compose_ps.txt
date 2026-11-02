@@ -1,0 +1,10 @@
+﻿NAME                       IMAGE                         COMMAND                  SERVICE                CREATED          STATUS                       PORTS
+csm-api-gateway            csm-be-api-gateway            "docker-entrypoint.s…"   api-gateway            38 seconds ago   Up 21 seconds (healthy)      0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+csm-auth-service           csm-be-auth-service           "docker-entrypoint.s…"   auth-service           47 seconds ago   Up 33 seconds (healthy)      0.0.0.0:3001->3001/tcp, [::]:3001->3001/tcp
+csm-frontend               csm-be-frontend               "/docker-entrypoint.…"   frontend               35 seconds ago   Up 16 seconds                0.0.0.0:3000->80/tcp, [::]:3000->80/tcp
+csm-inventory-service      csm-be-inventory-service      "docker-entrypoint.s…"   inventory-service      47 seconds ago   Up 34 seconds (healthy)      0.0.0.0:3003->3003/tcp, [::]:3003->3003/tcp
+csm-mysql                  mysql:8.0                     "docker-entrypoint.s…"   mysql                  3 weeks ago      Up About an hour (healthy)   0.0.0.0:3306->3306/tcp, [::]:3306->3306/tcp
+csm-notification-service   csm-be-notification-service   "docker-entrypoint.s…"   notification-service   47 seconds ago   Up 34 seconds (healthy)      0.0.0.0:3006->3006/tcp, [::]:3006->3006/tcp
+csm-order-service          csm-be-order-service          "docker-entrypoint.s…"   order-service          42 seconds ago   Up 27 seconds (healthy)      0.0.0.0:3004->3004/tcp, [::]:3004->3004/tcp
+csm-payment-service        csm-be-payment-service        "docker-entrypoint.s…"   payment-service        47 seconds ago   Up 34 seconds (healthy)      0.0.0.0:3005->3005/tcp, [::]:3005->3005/tcp
+csm-product-service        csm-be-product-service        "docker-entrypoint.s…"   product-service        47 seconds ago   Up 33 seconds (healthy)      0.0.0.0:3002->3002/tcp, [::]:3002->3002/tcp

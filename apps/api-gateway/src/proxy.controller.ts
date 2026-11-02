@@ -1,7 +1,9 @@
-import { Controller, All, Req, Res, Next, HttpStatus } from '@nestjs/common';
+import { Controller, All, Get, Param, Req, Res, Next, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Định tuyến cổng của các Microservices nội bộ
 const SERVICE_MAP: Record<string, string> = {
@@ -13,10 +15,11 @@ const SERVICE_MAP: Record<string, string> = {
   orders: process.env.ORDER_SERVICE_URL || 'http://localhost:3004',
   payments: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005',
   notifications: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
+  uploads: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
 };
 
-function isPublicEndpoint(method: string, path: string): boolean {
-  const normPath = '/' + path.replace(/^\/?(api\/v1\/)?/, '');
+function isPublicEndpoint(method: string, pathUrl: string): boolean {
+  const normPath = '/' + pathUrl.replace(/^\/?(api\/v1\/)?/, '');
   const m = method.toUpperCase();
 
   if (normPath === '/health') {
@@ -25,6 +28,11 @@ function isPublicEndpoint(method: string, path: string): boolean {
 
   // Swagger Documentation routes
   if (normPath.startsWith('/docs') || normPath.startsWith('/swagger')) {
+    return true;
+  }
+
+  // File uploads route is public
+  if (normPath.startsWith('/uploads')) {
     return true;
   }
 
@@ -62,13 +70,118 @@ export class ProxyController {
     return { status: 'ok', service: 'api-gateway' };
   }
 
+  @Get('uploads')
+  getUploadsBase(@Res() res: Response) {
+    return res.status(HttpStatus.BAD_REQUEST).json({
+      statusCode: HttpStatus.BAD_REQUEST,
+      message: 'Phát hiện path traversal không hợp lệ',
+    });
+  }
+
+  @Get('uploads/:filename')
+  async getUploadFile(@Param('filename') filename: string, @Res() res: Response) {
+    return this.serveUploadFile(filename, res);
+  }
+
+  @Get('api/v1/uploads/:filename')
+  async getUploadFileWithPrefix(@Param('filename') filename: string, @Res() res: Response) {
+    return this.serveUploadFile(filename, res);
+  }
+
+  private async serveUploadFile(filename: string, res: Response) {
+    // Chặn path traversal tuyệt đối
+    if (
+      !filename ||
+      filename.includes('..') ||
+      filename.includes('/') ||
+      filename.includes('\\') ||
+      filename.includes('%')
+    ) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: 'Phát hiện path traversal không hợp lệ',
+      });
+    }
+
+    const safeFilename = path.basename(filename);
+    if (filename !== safeFilename) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: 'Phát hiện path traversal không hợp lệ',
+      });
+    }
+
+    const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads'));
+    const safePath = path.resolve(uploadDir, safeFilename);
+
+    if (!safePath.startsWith(uploadDir + path.sep)) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: 'Phát hiện path traversal không hợp lệ',
+      });
+    }
+
+    // 1. Phục vụ trực tiếp từ Docker volume dùng chung nếu tệp tồn tại
+    if (fs.existsSync(safePath)) {
+      return res.sendFile(safePath);
+    }
+
+    // 2. Dự phòng chuyển tiếp qua product-service nếu chưa có ở đĩa local
+    try {
+      const productBaseUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
+      const upstream = await axios.get(`${productBaseUrl}/uploads/${safeFilename}`, {
+        responseType: 'stream',
+        validateStatus: () => true,
+      });
+
+      if (upstream.status === 200) {
+        const contentType = upstream.headers['content-type'];
+        if (contentType) {
+          res.setHeader('content-type', String(contentType));
+        }
+        return upstream.data.pipe(res);
+      }
+    } catch (err) {
+      // upstream error
+    }
+
+    return res.status(HttpStatus.NOT_FOUND).json({
+      statusCode: HttpStatus.NOT_FOUND,
+      message: 'Không tìm thấy hình ảnh',
+    });
+  }
 
   @All('*')
   async handleProxy(@Req() req: Request, @Res() res: Response, @Next() next: any) {
+    const rawUrl = req.originalUrl || req.url || req.path || '';
+
+    // Chặn path traversal nếu client gửi URL chứa uploads và .. hoặc %2e
+    if (
+      rawUrl.includes('/uploads') &&
+      (rawUrl.includes('..') || rawUrl.toLowerCase().includes('%2e'))
+    ) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: 'Phát hiện path traversal không hợp lệ',
+      });
+    }
+
     const cleanPath = req.path.replace(/^\/?(api\/v1\/)?/, '');
     if (cleanPath.startsWith('docs') || cleanPath.startsWith('swagger') || req.path.includes('/docs')) {
       return next();
     }
+
+    if (cleanPath.startsWith('uploads')) {
+      const uploadFilename = cleanPath.replace(/^uploads\/?/, '');
+      if (!uploadFilename) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: 'Phát hiện path traversal không hợp lệ',
+        });
+      }
+      return this.serveUploadFile(uploadFilename, res);
+    }
+
     const pathParts = cleanPath.split('/');
     const targetKey = pathParts[0];
     const targetBaseUrl = SERVICE_MAP[targetKey];
@@ -128,13 +241,18 @@ export class ProxyController {
 
     const targetUrl = `${targetBaseUrl}/${cleanPath}`;
 
+    // Kiểm tra xem request có phải multipart/form-data không
+    const isMultipart = req.headers['content-type']?.includes('multipart/form-data');
+
     try {
       const response = await axios({
         method: req.method,
         url: targetUrl,
-        data: req.body,
+        data: isMultipart ? req : (['GET', 'HEAD'].includes(req.method.toUpperCase()) ? undefined : req.body),
         params: req.query,
         headers,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
         validateStatus: () => true, // Không throw exception nếu status >= 400
       });
 

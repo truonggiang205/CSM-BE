@@ -1,0 +1,159 @@
+﻿======================================================
+🧪 KIỂM CHỨNG TÍNH BẢO TOÀN DỮ LIỆU CỦA DOCKER VOLUME
+   (DOCKER COMPOSE DOWN -> DOCKER COMPOSE UP)
+======================================================
+
+1. Đăng nhập tài khoản ADMIN...
+   ✅ Đăng nhập thành công, nhận token ADMIN.
+
+2. Tạo sản phẩm kiểm thử độ bền volume...
+   ✅ Đã tạo sản phẩm id=b46ffc5f-51be-4844-92c0-cf713404c889
+
+3. Tạo tệp ảnh PNG với dữ liệu nhị phân ngẫu nhiên độc nhất...
+   🔑 SHA-256 gốc của tệp ảnh trước khi upload: da928f94f2255b926b978757bf3edd4400c054907e4e80351599f9fe13fd4efe
+   📏 Kích thước tệp: 579 bytes
+
+4. Thực hiện upload ảnh lên server (POST /products/:id/image)...
+   ✅ Upload thành công! URL ảnh trả về: /uploads/6fbc0ee2-b5d5-4da6-9e0e-2757986a1d86.png
+
+5. Tải ảnh về qua Gateway TRƯỚC KHI down stack (GET /uploads/6fbc0ee2-b5d5-4da6-9e0e-2757986a1d86.png)...
+   ✅ Tải ảnh thành công (HTTP 200)
+   🔑 SHA-256 ảnh tải về trước khi down: da928f94f2255b926b978757bf3edd4400c054907e4e80351599f9fe13fd4efe
+
+======================================================
+🔴 TIẾN HÀNH DOCKER COMPOSE DOWN (Xoá hoàn toàn container & mạng)...
+======================================================
+node :  Container csm-frontend Stopping 
+At line:1 char:1
++ node scripts/test-volume-persistence.js 2>&1 | Tee-Object -FilePath l ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Container csm-frontend Stopping :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Container csm-frontend Stopped 
+ Container csm-frontend Removing 
+ Container csm-frontend Removed 
+ Container csm-api-gateway Stopping 
+ Container csm-api-gateway Stopped 
+ Container csm-api-gateway Removing 
+ Container csm-api-gateway Removed 
+ Container csm-auth-service Stopping 
+ Container csm-notification-service Stopping 
+ Container csm-order-service Stopping 
+ Container csm-payment-service Stopping 
+ Container csm-notification-service Stopped 
+ Container csm-notification-service Removing 
+ Container csm-order-service Stopped 
+ Container csm-order-service Removing 
+ Container csm-notification-service Removed 
+ Container csm-order-service Removed 
+ Container csm-inventory-service Stopping 
+ Container csm-product-service Stopping 
+ Container csm-auth-service Stopped 
+ Container csm-auth-service Removing 
+ Container csm-payment-service Stopped 
+ Container csm-payment-service Removing 
+ Container csm-auth-service Removed 
+ Container csm-payment-service Removed 
+ Container csm-product-service Stopped 
+ Container csm-product-service Removing 
+ Container csm-product-service Removed 
+ Container csm-inventory-service Stopped 
+ Container csm-inventory-service Removing 
+ Container csm-inventory-service Removed 
+ Container csm-mysql Stopping 
+ Container csm-mysql Stopped 
+ Container csm-mysql Removing 
+ Container csm-mysql Removed 
+ Network csm-be_csm-network Removing 
+ Network csm-be_csm-network Removed 
+✅ Toàn bộ container đã bị gỡ bỏ.
+
+======================================================
+🟢 TIẾN HÀNH DOCKER COMPOSE UP -D (Khởi động lại toàn bộ stack)...
+======================================================
+ Network csm-be_csm-network Creating 
+ Network csm-be_csm-network Creating 
+ Network csm-be_csm-network Created 
+ Network csm-be_csm-network Created 
+ Container csm-mysql Creating 
+ Container csm-payment-service Creating 
+ Container csm-notification-service Creating 
+ Container csm-notification-service Created 
+ Container csm-payment-service Created 
+ Container csm-mysql Created 
+ Container csm-product-service Creating 
+ Container csm-inventory-service Creating 
+ Container csm-auth-service Creating 
+ Container csm-inventory-service Created 
+ Container csm-product-service Created 
+ Container csm-order-service Creating 
+ Container csm-auth-service Created 
+ Container csm-order-service Created 
+ Container csm-api-gateway Creating 
+ Container csm-api-gateway Created 
+ Container csm-frontend Creating 
+ Container csm-frontend Created 
+ Container csm-mysql Starting 
+ Container csm-notification-service Starting 
+ Container csm-payment-service Starting 
+ Container csm-mysql Started 
+ Container csm-mysql Waiting 
+ Container csm-mysql Waiting 
+ Container csm-mysql Waiting 
+ Container csm-notification-service Started 
+ Container csm-payment-service Started 
+ Container csm-mysql Healthy 
+ Container csm-mysql Healthy 
+ Container csm-auth-service Starting 
+ Container csm-product-service Starting 
+ Container csm-mysql Healthy 
+ Container csm-inventory-service Starting 
+ Container csm-auth-service Started 
+ Container csm-product-service Started 
+ Container csm-inventory-service Started 
+ Container csm-product-service Waiting 
+ Container csm-mysql Waiting 
+ Container csm-inventory-service Waiting 
+ Container csm-mysql Healthy 
+ Container csm-product-service Healthy 
+ Container csm-inventory-service Healthy 
+ Container csm-order-service Starting 
+ Container csm-order-service Started 
+ Container csm-payment-service Waiting 
+ Container csm-notification-service Waiting 
+ Container csm-auth-service Waiting 
+ Container csm-product-service Waiting 
+ Container csm-inventory-service Waiting 
+ Container csm-order-service Waiting 
+ Container csm-inventory-service Healthy 
+ Container csm-auth-service Healthy 
+ Container csm-product-service Healthy 
+ Container csm-notification-service Healthy 
+ Container csm-payment-service Healthy 
+ Container csm-order-service Healthy 
+ Container csm-api-gateway Starting 
+ Container csm-api-gateway Started 
+ Container csm-api-gateway Waiting 
+ Container csm-api-gateway Healthy 
+ Container csm-frontend Starting 
+ Container csm-frontend Started 
+
+⏳ Đang chờ các container khởi động và hoàn thành healthcheck...
+✅ Hệ thống API Gateway và các Microservices đã sẵn sàng hoạt động trở lại.
+
+9. Tải ảnh về qua Gateway SAU KHI DOCKER COMPOSE DOWN & UP...
+   GET http://localhost:8000/uploads/6fbc0ee2-b5d5-4da6-9e0e-2757986a1d86.png
+   ✅ Tải ảnh thành công (HTTP 200)
+   🔑 SHA-256 ảnh tải về sau khi down & up: da928f94f2255b926b978757bf3edd4400c054907e4e80351599f9fe13fd4efe
+
+======================================================
+📊 ĐỐI CHIẾU CHỨNG MINH TÍNH BẢO TOÀN DỮ LIỆU:
+======================================================
+   - SHA256 ban đầu   : da928f94f2255b926b978757bf3edd4400c054907e4e80351599f9fe13fd4efe
+   - SHA256 trước down: da928f94f2255b926b978757bf3edd4400c054907e4e80351599f9fe13fd4efe
+   - SHA256 sau up    : da928f94f2255b926b978757bf3edd4400c054907e4e80351599f9fe13fd4efe
+   - Trạng thái HTTP  : 200 OK
+   - Kích thước byte  : 579 bytes (Khớp 100%)
+
+🎉 CHỨNG MINH THÀNH CÔNG: Tệp hình ảnh trên Docker Volume product_uploads vẫn tồn tại nguyên vẹn 100% sau khi docker compose down và up!

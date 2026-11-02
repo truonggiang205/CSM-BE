@@ -5,6 +5,8 @@ networks:
 volumes:
   mysql_data:
     driver: local
+  product_uploads:
+    driver: local
 
 services:
   # ==========================================
@@ -74,6 +76,9 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       DB_SYNC: ${DB_SYNC:-true}
       PRODUCT_DB_URL: ${PRODUCT_DB_URL:-mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_product}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - product_uploads:/app/uploads
     ports:
       - "3002:3002"
     depends_on:
@@ -230,6 +235,9 @@ services:
       ORDER_SERVICE_URL: http://order-service:3004
       PAYMENT_SERVICE_URL: http://payment-service:3005
       NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - product_uploads:/app/uploads:ro
     ports:
       - "8000:8000"
     depends_on:
