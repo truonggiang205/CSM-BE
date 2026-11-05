@@ -49,9 +49,14 @@ export class BranchController {
     private readonly stockRepository: Repository<Stock>,
   ) {}
 
-  // LẤY DANH SÁCH CHI NHÁNH ĐANG HOẠT ĐỘNG (is_active = true)
+  // LẤY DANH SÁCH CHI NHÁNH (MẶC ĐỊNH LẤY is_active = true, all=true để lấy toàn bộ)
   @Get()
-  async getAllBranches(): Promise<Branch[]> {
+  async getAllBranches(@Query('all') all?: string): Promise<Branch[]> {
+    if (all === 'true' || all === '1') {
+      return this.branchRepository.find({
+        order: { name: 'ASC' },
+      });
+    }
     return this.branchRepository.find({
       where: { is_active: true },
       order: { name: 'ASC' },
