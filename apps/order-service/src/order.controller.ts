@@ -314,7 +314,7 @@ export class OrderController {
     }
 
     const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.min(50, Math.max(1, Number(query.limit) || 10));
+    const limit = Math.min(1000, Math.max(1, Number(query.limit) || 10));
     const skip = (page - 1) * limit;
 
     const where: any = { user_id: userId.toString() };
@@ -356,7 +356,7 @@ export class OrderController {
     }
 
     const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.min(50, Math.max(1, Number(query.limit) || 10));
+    const limit = Math.min(1000, Math.max(1, Number(query.limit) || 10));
     const skip = (page - 1) * limit;
 
     const qb = this.orderRepository.createQueryBuilder('order')
