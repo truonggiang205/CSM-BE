@@ -11,7 +11,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  const PORT = process.env.PORT || 3004;
+  const PORT = process.env.ORDER_PORT || 3004;
   await app.listen(PORT);
   console.log(`🛒 Order Service đang chạy tại port: ${PORT}`);
 }

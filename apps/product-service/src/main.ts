@@ -13,7 +13,7 @@ async function bootstrap() {
     }),
   );
   app.useGlobalFilters(new MulterExceptionFilter());
-  const PORT = process.env.PORT || 3002;
+  const PORT = process.env.PRODUCT_PORT || 3002;
   await app.listen(PORT);
   console.log(`📦 Product & Branch Service đang chạy tại port: ${PORT}`);
 }

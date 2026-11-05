@@ -7,8 +7,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // Bật CORS cho phép Frontend truy cập
   app.enableCors({
-    origin: '*',
+    origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-requested-with', 'x-user-id'],
+    credentials: true,
   });
 
   // Chặn path traversal sớm trước khi router chuẩn hóa path
