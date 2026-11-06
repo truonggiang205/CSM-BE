@@ -1,0 +1,55 @@
+﻿488637e Merge pull request #6 from truonggiang205/feature/product-admin-images
+bfbc4b3 chore: convert evidence logs to utf-8
+7152893 feat(gateway,product): add automated volume persistence proof and upload path traversal safeguards
+d435b9d test(product): add unit and e2e test cases for search, filtering, and image upload
+924790d feat(product): product image upload with 2MB validation, safe storage, and gateway file serving
+5490156 feat(product): server-side search and filtering for GET /products with indexing migration
+12ceb66 Merge pull request #5 from truonggiang205/feature/sprint4-bench-docs
+61800b9 docs(api): enable Swagger on api-gateway and update system documentation
+03085b5 feat(benchmark): add comprehensive k6 and concurrent benchmark suite (CSM-42)
+bb4a040 perf(docker): optimize Dockerfiles layer caching with npm cache mount and pure JS bcryptjs
+f1ccdf6 Merge pull request #4 from truonggiang205/feature/order-api-sprint3
+214ff83 feat(order): CSM-29 order query APIs, payment simulation, and complete E2E test suite
+8a1d1c5 fix(test): mask all JWTs in e2e console output
+555fefa test(e2e): restore full e2e coverage with 72 cases and clarify COD order lifecycle
+3156a77 feat(order): unify order list response format to { items, total, page, limit, totalPages }
+304d456 chore(seed): add default local database URLs and conditional SSL to seed scripts
+3f28c30 fix(security): escape HTML inputs, enforce RBAC on createPayment, and secure simulation secret
+af5ce90 fix(payment): disable request-based simulation flag, enforce server-level toggle, and update tests
+7c14512 fix(order): restore CreateOrderTables, add AddPaymentMethodToOrders migration and consolidate migrations
+daeb904 test(payment): add unit, e2e and empty-schema migration tests
+7ca9ace fix(payment): tighten payment simulation security, jwt token and idempotency
+6658cfc feat(payment): add simulated payment callback and order state transition
+132d30c feat(order): implement CSM-29 order query APIs with pagination, RBAC and indexes
+744c6ef Merge pull request #3 from truonggiang205/feature/sprint3-tech-fixes
+4fe512f chore: add ts-node dev dependency for seed scripts
+2fdb545 chore: ignore .env.cloud and .env.local
+7eba3e0 chore(docker): use node 22, add dockerignore, drop obsolete compose version
+4fed063 chore: sync package-lock with payment and notification workspaces
+c586299 chore(docker): allow docker-compose to use cloud DB URLs from .env with fallback to local container
+137dec3 test: add comprehensive jest test suites for saga, concurrency, idempotency, auth and state transitions
+0b26461 docs(notification): document simulation mode in code and README without RabbitMQ
+2150ee2 feat(db): make synchronize conditional and add core migrations for all services
+6b8e292 feat(docker): add multi-stage Dockerfiles and unified docker-compose environment
+2b593d2 feat: enable strict ValidationPipe and DTOs across auth, order, product, and inventory services
+0bda576 feat(branch): implement soft delete, 409 conflict checks on active stocks/orders, and active branch filter
+9ef7d31 feat(test): add comprehensive database cleanup and isolated test db configuration
+3f43e29 test(order): add jest test verifying saga compensation rollback upon database failure
+23fc566 test(e2e): implement explicit assertions, pass-fail indicators and summary with exit code
+a8c0e46 feat(branch): add coordinates, haversine nearest lookup, admin crud and seed
+40e0ea1 test: add safety test cases and transaction inspection
+ec611e4 fix(order): validate branchId existence via inventory service and load INTERNAL_SECRET strictly from env
+0c48f9b test(e2e): add comprehensive seed scripts, proxy path normalization, and security test suite
+9b36b64 fix(order): evaluate user permissions prior to state machine transitions to return 403 for unauthorized status changes
+ff22a48 feat(auth): enforce token type claims, separate refresh secret, and customer-only registration
+febdb8c feat(inventory): add unique index on stock transaction and race-safe lock-checked idempotency
+bd3aab3 fix(order): verify product existence and fetch base_price from product-service to prevent tampering
+956d095 fix(gateway): strip client-supplied identity headers and restrict to valid access tokens
+c1e17b7 fix(order): enforce state machine transitions, role permissions, and saga safety on order status updates
+f5f868f feat(inventory): add idempotency by reference_id and stock transaction logging under pessimistic_write
+7eeecd8 feat(auth): centralize jwt verification at api gateway and add roles guard
+ad045b2 feat(auth): implement real auth service with bcrypt, dual jwt tokens and seed script
+b9512b4 fix(order): align inventory saga endpoints and add order status transition
+98bcc53 Merge pull request #2 from truonggiang205/feat/sprint2-multi-branch-stock
+5b668cb feat(inventory): add branch endpoints and product inventory lookup
+c33cb17 feat: complete product CRUD and inventory saga endpoints

@@ -1,0 +1,19 @@
+﻿=== CSM-BE Commits by Week (since 6 weeks ago) ===
+2026-W39 (21/09 - 27/09/2026): 1 commits
+2026-W40 (28/09 - 04/10/2026): 22 commits
+2026-W41 (05/10 - 11/10/2026): 8 commits
+2026-W42 (12/10 - 18/10/2026): 18 commits
+2026-W43 (19/10 - 25/10/2026): 0 commits
+2026-W44 (26/10 - 01/11/2026): 5 commits
+2026-W45 (02/11 - 08/11/2026): 1 commits
+Total BE commits in 6 weeks: 55 commits
+
+=== CSM-FE Commits by Week (since 6 weeks ago) ===
+2026-W39 (21/09 - 27/09/2026): 0 commits
+2026-W40 (28/09 - 04/10/2026): 12 commits
+2026-W41 (05/10 - 11/10/2026): 1 commits
+2026-W42 (12/10 - 18/10/2026): 17 commits
+2026-W43 (19/10 - 25/10/2026): 0 commits
+2026-W44 (26/10 - 01/11/2026): 10 commits
+2026-W45 (02/11 - 08/11/2026): 1 commits
+Total FE commits in 6 weeks: 41 commits
