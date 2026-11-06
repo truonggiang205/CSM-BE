@@ -1,0 +1,78 @@
+﻿
+> csm-be@1.0.0 seed:demo
+> ts-node scripts/seed-data.ts
+
+======================================================
+🚀 BẮT ĐẦU SEED BỘ DỮ LIỆU DEMO ĐỒ ÁN CSM (IDEMPOTENT)
+======================================================
+
+📌 Bước 1: Khởi tạo/Cập nhật Tài khoản người dùng (Auth DB)...
+  🔄 Cập nhật tài khoản: admin@csm.vn [ADMIN]
+  🔄 Cập nhật tài khoản: manager.q1@csm.vn [BRANCH_MANAGER]
+  🔄 Cập nhật tài khoản: manager.q2@csm.vn [BRANCH_MANAGER]
+  🔄 Cập nhật tài khoản: customer1@csm.vn [CUSTOMER]
+  🔄 Cập nhật tài khoản: customer2@csm.vn [CUSTOMER]
+  🔄 Cập nhật tài khoản: customer@csm.vn [CUSTOMER]
+
+📌 Bước 2: Khởi tạo/Cập nhật 3 Chi nhánh TP.HCM (Inventory DB)...
+  🔄 Cập nhật toạ độ chi nhánh: [br-01] CSM Bến Nghé - Quận 1
+  🔄 Cập nhật toạ độ chi nhánh: [br-02] CSM Phú Mỹ Hưng - Quận 7
+  🔄 Cập nhật toạ độ chi nhánh: [br-03] CSM Hàng Xanh - Bình Thạnh
+
+📌 Bước 3: Khởi tạo/Cập nhật 5 Danh mục & 26 Sản phẩm (Product DB)...
+  🔄 Cập nhật danh mục: Đồ uống & Giải khát
+  🔄 Cập nhật danh mục: Bánh kẹo & Snack
+  🔄 Cập nhật danh mục: Mì & Thức ăn nhanh
+  🔄 Cập nhật danh mục: Sữa & Sản phẩm từ sữa
+  🔄 Cập nhật danh mục: Đồ dùng cá nhân & Tiện ích
+  🔄 Cập nhật sản phẩm: [SKU-DRK-001] Trà Sữa Trân Châu CSM
+  🔄 Cập nhật sản phẩm: [SKU-DRK-002] Cà Phê Sữa Đá Sài Gòn
+  🔄 Cập nhật sản phẩm: [SKU-DRK-003] Trà Đào Cam Sả Tươi
+  🔄 Cập nhật sản phẩm: [SKU-DRK-004] Nước Tăng Lực Red Bull 250ml
+  🔄 Cập nhật sản phẩm: [SKU-DRK-005] Nước Khoáng Thiên Nhiên La Vie 500ml
+  🔄 Cập nhật sản phẩm: [SKU-DRK-006] Cà Phê Đen Đá Không Đường
+  🔄 Cập nhật sản phẩm: [SKU-SNK-001] Snack Khoai Tây Lay's Vị Tảo Biển 56g
+  🔄 Cập nhật sản phẩm: [SKU-SNK-002] Snack Bắp Cay Oishi 40g
+  🔄 Cập nhật sản phẩm: [SKU-SNK-003] Bánh Quy Bơ Danisa 200g
+  🔄 Cập nhật sản phẩm: [SKU-SNK-004] Kẹo Cao Su Cool Air Bạc Hà
+  🔄 Cập nhật sản phẩm: [SKU-SNK-005] Bánh Que Pocky Chocolate 40g
+  🔄 Cập nhật sản phẩm: [SKU-NDL-001] Mì Trộn Cay Indomie Mi Goreng
+  🔄 Cập nhật sản phẩm: [SKU-NDL-002] Bánh Bao Xá Xíu Trứng Cút Nóng
+  🔄 Cập nhật sản phẩm: [SKU-NDL-003] Mì Ly Hảo Hảo Tôm Chua Cay
+  🔄 Cập nhật sản phẩm: [SKU-NDL-004] Cơm Nắm Onigiri Cá Hồi Mayonnaise
+  🔄 Cập nhật sản phẩm: [SKU-NDL-005] Xúc Xích Phô Mai Vissan Nóng
+  🔄 Cập nhật sản phẩm: [SKU-MLK-001] Sữa Tươi Tiệt Trùng Vinamilk Ít Đường 180ml
+  🔄 Cập nhật sản phẩm: [SKU-MLK-002] Sữa Chua Uống Men Sống Probi 130ml
+  🔄 Cập nhật sản phẩm: [SKU-MLK-003] Sữa Lúa Mạch Milo Hộp 180ml
+  🔄 Cập nhật sản phẩm: [SKU-MLK-004] Sữa Hạt Óc Chó TH true NUT 180ml
+  🔄 Cập nhật sản phẩm: [SKU-MLK-005] Sữa Chua Ăn Nha Đam Vinamilk 100g
+  🔄 Cập nhật sản phẩm: [SKU-PER-001] Khăn Giấy Ướt Kháng Khuẩn CSM Gói 20 tờ
+  🔄 Cập nhật sản phẩm: [SKU-PER-002] Gel Rửa Tay Khô Lifebuoy 50ml
+  🔄 Cập nhật sản phẩm: [SKU-PER-003] Khẩu Trang Y Tế 4 Lớp Kháng Khuẩn (Gói 10 cái)
+  🔄 Cập nhật sản phẩm: [SKU-PER-004] Bàn Chải Đánh Răng Than Hoạt Tính Colgate
+  🔄 Cập nhật sản phẩm: [SKU-PER-005] Bật Lửa Tiện Dụng Cricket
+
+📌 Bước 4: Tải lên ảnh placeholder qua API POST /products/:id/image...
+  🔑 Đăng nhập tài khoản Admin thành công để cấp quyền tải ảnh.
+
+📌 Bước 5: Khởi tạo/Bổ sung tồn kho qua API POST /inventory/add-stock...
+
+📌 Bước 6: Khởi tạo 12 Đơn hàng qua API thật (Saga & State Machine)...
+  👌 Đã có 12 đơn hàng demo trong hệ thống. Bỏ qua bước tạo để đảm bảo Idempotent.
+
+======================================================
+📊 TỔNG KẾT TOÀN BỘ BỘ DỮ LIỆU DEMO HỆ THỐNG CSM:
+======================================================
+  👤 Tổng số tài khoản (Auth DB):       13 tài khoản
+     (admin@csm.vn, manager.q1@csm.vn, manager.q2@csm.vn, customer1, customer2)
+  🏢 Tổng số chi nhánh (Inventory DB):  3 chi nhánh (br-01, br-02, br-03)
+  📂 Tổng số danh mục (Product DB):     5 danh mục
+  📦 Tổng số sản phẩm (Product DB):     26 sản phẩm (SKU-DRK, SKU-SNK, SKU-NDL, ...)
+  🖼️ Ảnh placeholder đã xử lý:          0 tải mới, 26 sẵn có
+  📊 Bản ghi tồn kho (Inventory DB):    91 bản ghi (đủ 3 chi nhánh)
+  🛒 Tổng số đơn hàng (Order DB):       218 đơn hàng
+     - Phân bổ theo trạng thái: { CANCELLED: 164, CONFIRMED: 15, PENDING: 16, PAID: 19, SHIPPED: 4 }
+     - Phân bổ theo chi nhánh:   { 'br-01': 210, 'br-02': 8 }
+======================================================
+🎉 SEED DỮ LIỆU DEMO HOÀN TẤT THÀNH CÔNG VÀ IDEMPOTENT!
+
