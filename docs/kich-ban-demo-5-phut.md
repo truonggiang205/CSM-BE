@@ -1,24 +1,31 @@
-# KỊCH BẢN DEMO TIẾN ĐỘ ĐỒ ÁN CSM (THỜI LƯỢNG 5 PHÚT)
+# KỊCH BẢN DEMO TIẾN ĐỘ ĐỒ ÁN CSM (THỜI LƯỢNG 5 - 7 PHÚT)
 
 - **Đối tượng báo cáo:** GVHD ThS. Nguyễn Hữu Trung
 - **Nhóm thực hiện:** Nhom04 (Hà Trường Giang, Nguyễn Khánh)
-- **Mục tiêu:** Trực quan hoá luồng vận hành cốt lõi từ góc nhìn Khách hàng (O2O Shopping & Thanh toán mô phỏng) đến Quản trị viên/Quản lý chi nhánh (RBAC & Quản lý tồn kho đa chi nhánh).
-- **Quy tắc an toàn:** Không in mật khẩu dạng văn bản thô (Plaintext). Mọi tài khoản sử dụng đều lấy từ dữ liệu seed chuẩn của hệ thống.
+- **Mục tiêu:** Trực quan hoá luồng vận hành thực tế từ góc nhìn Khách hàng (O2O Shopping, Đa chi nhánh, Thanh toán mô phỏng & Saga) đến góc nhìn Quản trị viên / Quản lý chi nhánh (RBAC, Khoá chi nhánh, Quản trị kho hàng & State Machine).
+- **Quy tắc bảo mật:** Không in mật khẩu dạng văn bản thô ra log. Mật khẩu demo đọc an toàn từ biến môi trường `SEED_PASSWORD`.
 
 ---
 
-## TỔNG QUAN CÁC TÀI KHOẢN SEED & THÔNG TIN HỆ THỐNG
+## 1. TỔNG QUAN HỆ THỐNG & TÀI KHOẢN DEMO
 
-- **Frontend URL:** `http://localhost:3000`
-- **Backend API Gateway URL:** `http://localhost:8000/api/v1`
-- **Danh sách tài khoản kiểm thử chuẩn:**
-  1. **Khách hàng (Customer Seed):** `customer@csm.vn` (Role: `CUSTOMER`, không gắn chi nhánh)
-  2. **Quản lý chi nhánh Q.1 (Manager Seed):** `manager.q1@csm.vn` (Role: `BRANCH_MANAGER`, phụ trách chi nhánh `br-01`)
-  3. **Quản trị viên toàn hệ thống (Admin Seed):** `admin@csm.vn` (Role: `ADMIN`, toàn quyền)
+- **Giao diện Khách hàng & Quản trị (Frontend):** `http://localhost:3000`
+- **Cổng kết nối trung tâm (API Gateway):** `http://localhost:8000/api/v1`
+- **Tài liệu đặc tả API (Swagger UI):** `http://localhost:8000/docs`
+- **Mật khẩu dùng chung cho toàn bộ tài khoản demo:** `Demo@123456`
+
+### Danh sách tài khoản thực nghiệm chuẩn:
+| STT | Email | Vai trò (Role) | Chi nhánh phụ trách | Mục đích demo |
+| :---: | :--- | :--- | :---: | :--- |
+| 1 | `customer1@csm.vn` | `CUSTOMER` | Không | Mua hàng, thanh toán COD, huỷ đơn PENDING |
+| 2 | `customer2@csm.vn` | `CUSTOMER` | Không | Mua hàng thanh toán MOMO trực tuyến mô phỏng |
+| 3 | `manager.q1@csm.vn` | `BRANCH_MANAGER` | `br-01` (Bến Nghé - Q1) | Demo phân quyền khoá đơn hàng theo chi nhánh Q1 |
+| 4 | `manager.q2@csm.vn` | `BRANCH_MANAGER` | `br-02` (Phú Mỹ Hưng - Q7) | Đối chiếu phân quyền độc lập với chi nhánh Q1 |
+| 5 | `admin@csm.vn` | `ADMIN` | Toàn hệ thống | Quản trị toàn quyền, xem toàn bộ chi nhánh và kho |
 
 ---
 
-## KỊCH BẢN CHI TIẾT 10 BƯỚC DEMO (THEO TRÌNH TỰ)
+## 2. SƠ ĐỒ LUỒNG DEMO 8 BƯỚC
 
 ```mermaid
 sequenceDiagram
@@ -28,144 +35,171 @@ sequenceDiagram
     participant GW as API Gateway (Port 8000)
     participant Core as Backend Microservices
     
-    User->>FE: 1. Đăng ký tài khoản mới (/register)
-    FE->>GW: POST /auth/register
-    GW->>Core: Gán role mặc định CUSTOMER
-    User->>FE: 2. Chọn chi nhánh mua hàng (br-01)
-    User->>FE: 3. Thêm sản phẩm vào giỏ hàng (/cart)
-    User->>FE: 4. Đặt đơn hàng COD (/checkout)
-    FE->>GW: POST /orders (Saga: reserve-stock)
-    User->>FE: 5. Đặt đơn MOMO & Xác nhận mô phỏng
-    FE->>GW: POST /payments/create & simulate-success
-    User->>FE: 6. Xem chi tiết đơn hàng (/orders/:id)
-    User->>FE: 7. Đăng nhập Quản lý chi nhánh Q.1 (/login)
-    User->>FE: 8. Kiểm tra phân quyền đơn hàng (/admin/orders)
-    User->>FE: 9. Nhập kho sản phẩm (/admin/inventory)
-    User->>FE: 10. Thử vi phạm quyền hạn (/admin -> /unauthorized)
+    Note over User,Core: PHẦN 1: TRẢI NGHIỆM KHÁCH HÀNG (O2O SHOPPING & SAGA)
+    User->>FE: 1. Xem Trang chủ & Chọn chi nhánh br-01 (Bến Nghé - Q1)
+    User->>FE: 2. Xem 26 SP & Test hết hàng tại chi nhánh br-02
+    User->>FE: 3. Mua hàng COD -> Kích hoạt Saga giữ kho (reserve-stock)
+    FE->>GW: POST /orders (Status: PENDING)
+    User->>FE: 4. Mua hàng MOMO -> Xác nhận mô phỏng -> Đổi sang PAID
+    FE->>GW: POST /payments/simulate-success (Status: PAID)
+    User->>FE: 5. Vào /orders -> Tự huỷ đơn PENDING -> Saga hoàn kho (release-stock)
+    FE->>GW: PATCH /orders/:id/status (CANCELLED)
+
+    Note over User,Core: PHẦN 2: QUẢN TRỊ & PHÂN QUYỀN (RBAC & INVENTORY)
+    User->>FE: 6. Đăng nhập Quản lý Q1 (manager.q1@csm.vn)
+    FE->>GW: GET /orders (Backend tự ép WHERE branch_id = 'br-01')
+    User->>FE: 7. Vào /admin/inventory -> Xem tồn kho thật & Nhập thêm hàng (Restock)
+    User->>FE: 8. Đăng nhập Admin (admin@csm.vn) -> Xem bức tranh toàn chuỗi
 ```
 
 ---
 
-### BƯỚC 1: ĐĂNG KÝ TÀI KHOẢN KHÁCH HÀNG MỚI
-- **Mục tiêu:** Chứng minh hệ thống xác thực hoạt động thực tế, tự động ép role an toàn về `CUSTOMER`.
-- **URL:** `http://localhost:3000/register`
-- **Tài khoản sử dụng:** Nhập email mới linh động (ví dụ: `demo_user_<timestamp>@csm.vn`).
-- **Thao tác:** Điền Họ tên, Email, Mật khẩu và bấm nút **"Đăng ký tài khoản"**.
-- **Kết quả mong đợi:** Hệ thống hiển thị thông báo thành công, cấp Access Token và chuyển hướng về Trang chủ, trên thanh điều hướng xuất hiện tên người dùng.
-- **Phương án dự phòng nếu bước này lỗi:** 
-  - Đăng nhập trực tiếp bằng tài khoản khách hàng seed sẵn: `customer@csm.vn`.
-  - Nếu Gateway chưa bật: Giao diện hiển thị form thông báo lỗi thân thiện nhờ `ErrorBoundary`.
+## 3. KỊCH BẢN CHI TIẾT 8 BƯỚC THỰC HIỆN
+
+### Chuẩn bị trước khi bấm máy:
+1. Mở cửa sổ **Trình duyệt thường (Tab 1)**: `http://localhost:3000` (để thao tác vai trò Khách hàng).
+2. Mở cửa sổ **Trình duyệt ẩn danh (Tab 2)**: `http://localhost:3000/login` (để thao tác vai trò Quản lý chi nhánh).
 
 ---
 
-### BƯỚC 2: CHỌN CHI NHÁNH MUA HÀNG (HAVERSINE & MULTI-BRANCH)
-- **Mục tiêu:** Chứng minh kiến trúc bán lẻ đa chi nhánh (tồn kho gắn liền với từng cửa hàng vật lý).
-- **URL:** `http://localhost:3000/`
-- **Tài khoản sử dụng:** Khách hàng đã đăng nhập từ Bước 1.
-- **Thao tác:** Nhấn vào nút chọn chi nhánh trên Header (hoặc Modal tự mở), chọn chi nhánh **"CSM Bến Nghé - Quận 1"** (ID: `br-01`).
-- **Kết quả mong đợi:** Header cập nhật tên chi nhánh đã chọn `CSM Bến Nghé - Quận 1`. Toàn bộ dữ liệu tồn kho hiển thị tiếp theo sẽ lấy theo chi nhánh này.
-- **Phương án dự phòng nếu bước này lỗi:** Hệ thống có cơ chế Fallback tự động chọn chi nhánh mặc định đầu tiên trong danh sách (`mockBranches[0]`) để không làm gián đoạn luồng mua hàng.
+### BƯỚC 1: GIỚI THIỆU TRANG CHỦ & KIẾN TRÚC O2O ĐA CHI NHÁNH
+* **Thời lượng:** ~ 45 giây.
+* **URL:** `http://localhost:3000/`
+* **Thao tác:** 
+  1. Bấm vào nút **"Chọn chi nhánh mua hàng"** trên Header.
+  2. Chọn chi nhánh **"CSM Bến Nghé - Quận 1"** (`br-01`).
+* **Lời nói với thầy:** 
+  > *"Hệ thống CSM áp dụng mô hình O2O (Online-to-Offline) cho chuỗi cửa hàng tiện lợi. Mỗi cửa hàng vật lý có toạ độ GPS thực tế ở TP.HCM. Tồn kho và xử lý đơn hàng sẽ gắn chặt với chi nhánh mà khách hàng lựa chọn."*
+* **Kết quả mong đợi:** Header hiển thị tên chi nhánh đã chọn: `CSM Bến Nghé - Quận 1`.
 
 ---
 
-### BƯỚC 3: DUYỆT SẢN PHẨM VÀ THÊM VÀO GIỎ HÀNG
-- **Mục tiêu:** Trình diễn giao diện hiện đại (Pastel Design System), xem chi tiết và kiểm tra tồn kho tức thời.
-- **URL:** `http://localhost:3000/products` hoặc duyệt từ Trang chủ (`/`).
-- **Tài khoản sử dụng:** Khách hàng hiện tại.
-- **Thao tác:** 
-  1. Chọn 1 sản phẩm còn hàng tại chi nhánh Bến Nghé (ví dụ: Nước suối hoặc Bánh mì).
-  2. Bấm nút **"Thêm vào giỏ"**.
-  3. Mở giỏ hàng tại `http://localhost:3000/cart`.
-- **Kết quả mong đợi:** Badge giỏ hàng trên Header nhảy số (+1). Trong trang `/cart`, thanh tiến độ Freeship động tự tính số tiền còn thiếu để được miễn phí giao hàng.
-- **Phương án dự phòng nếu bước này lỗi:** Dữ liệu giỏ hàng được đồng bộ an toàn qua `localStorage` bằng khối `try-catch`, nếu API tạm thời ngắt kết nối thì các thao tác tăng/giảm số lượng trong giỏ vẫn phản hồi mượt mà trên UI.
+### BƯỚC 2: XEM 26 SẢN PHẨM & DEMO KHÁC BIỆT TỒN KHO THEO CHI NHÁNH
+* **Thời lượng:** ~ 1 phút.
+* **URL:** `http://localhost:3000/products`
+* **Thao tác:**
+  1. Cuộn trang giới thiệu: Toàn bộ **26 sản phẩm** thuộc 5 danh mục (Đồ uống, Bánh kẹo & Snack, Mì & Thức ăn nhanh, Sữa, Đồ dùng cá nhân) hiển thị đầy đủ với hình ảnh nhận diện danh mục, giá bán chuẩn VNĐ.
+  2. **Thao tác điểm nhấn:** Đổi chi nhánh sang **"CSM Phú Mỹ Hưng - Quận 7" (`br-02`)**:
+     * Tìm món **"Cơm Nắm Onigiri Cá Hồi Mayonnaise"**: Hệ thống hiển thị huy hiệu **"Hết hàng" (0 tồn)**, nút Thêm giỏ bị khóa.
+     * Đổi lại chi nhánh **"CSM Bến Nghé - Quận 1" (`br-01`)**: Món này lập tức **còn hàng (50 cái)** và đặt mua bình thường.
+* **Lời nói với thầy:** 
+  > *"Cùng một mã sản phẩm (Master Product), nhưng số lượng tồn kho được quản lý độc lập tại từng database/microservice kho của chi nhánh đó."*
 
 ---
 
-### BƯỚC 4: ĐẶT HÀNG THANH TOÁN KHI NHẬN HÀNG (COD) & KÍCH HOẠT SAGA
-- **Mục tiêu:** Trình diễn luồng tạo đơn hàng, kích hoạt Saga giữ kho (`reserve-stock`) trong Inventory Service.
-- **URL:** `http://localhost:3000/checkout`
-- **Tài khoản sử dụng:** Khách hàng hiện tại.
-- **Thao tác:** Điền địa chỉ giao hàng, chọn phương thức thanh toán **"Thanh toán khi nhận hàng (COD)"**, bấm nút **"Đặt hàng ngay"**.
-- **Kết quả mong đợi:** 
-  - Tạo đơn hàng thành công với trạng thái ban đầu là `PENDING`.
-  - Backend gọi sang Inventory Service tăng `reserved_quantity` để giữ chỗ sản phẩm.
-  - Tự động chuyển hướng sang trang chi tiết đơn hàng `/orders/:id`.
-- **Phương án dự phòng nếu bước này lỗi:** Kiểm tra log console của `order-service`, nếu có lỗi kết nối kho thì Order Service tự động kích hoạt giao dịch bù trừ (Compensating Transaction) huỷ giữ chỗ.
+### BƯỚC 3: ĐẶT ĐƠN COD & KÍCH HOẠT SAGA GIỮ HÀNG (`reserve-stock`)
+* **Thời lượng:** ~ 45 giây.
+* **URL:** `http://localhost:3000/checkout`
+* **Tài khoản sử dụng:** `customer1@csm.vn` | Mật khẩu: `Demo@123456`
+* **Thao tác:**
+  1. Chọn món **"Trà Sữa Trân Châu CSM"** (chi nhánh Q1 hiện chỉ có đúng 2 cái) -> Bấm **Thêm vào giỏ**.
+  2. Vào giỏ hàng [http://localhost:3000/cart](http://localhost:3000/cart) -> Bấm **Tiến hành thanh toán**.
+  3. Chọn phương thức **"Thanh toán khi nhận hàng (COD)"** -> Bấm nút **"Đặt hàng ngay"**.
+* **Lời nói với thầy:** 
+  > *"Khi bấm Đặt hàng, Order Service gọi sang Inventory Service thực hiện Bước 1 của Saga là `reserve-stock` (giữ hàng tạm thời bằng khoá bi quan pessimistic_write lock). Đơn hàng được tạo thành công ở trạng thái `PENDING`."*
+* **Kết quả mong đợi:** Đơn hàng tạo thành công, chuyển hướng đến trang xem chi tiết đơn với mã đơn dạng `#...` và trạng thái `PENDING`.
 
 ---
 
-### BƯỚC 5: ĐẶT HÀNG THANH TOÁN TRỰC TUYẾN MÔ PHỎNG (MOMO)
-- **Mục tiêu:** Trình diễn luồng thanh toán mô phỏng an toàn có chữ ký token và xác nhận chuyển trạng thái.
-- **URL:** `http://localhost:3000/checkout`
-- **Tài khoản sử dụng:** Khách hàng hiện tại.
-- **Thao tác:** 
-  1. Thêm một món hàng khác vào giỏ, vào Checkout và chọn phương thức **"Ví điện tử MoMo"**.
-  2. Bấm **"Tiến hành thanh toán"**.
-  3. Hệ thống mở trang giao diện mô phỏng thanh toán MoMo của Payment Service (`/api/v1/payments/simulate-success/:orderId?token=...`).
-  4. Bấm nút **"Xác nhận thanh toán thành công"**.
-- **Kết quả mong đợi:** 
-  - Trang mô phỏng gửi POST token hợp lệ, Payment Service cập nhật đơn hàng thành `CONFIRMED` -> `PAID` và gọi kho `confirm-deduct` để trừ tồn kho thực tế.
-  - Hệ thống tự động chuyển hướng quay về Frontend tại `/orders/:id` với huy hiệu trạng thái xanh lá: **Đã thanh toán (PAID)**.
-- **Phương án dự phòng nếu bước này lỗi:** Nếu cổng mô phỏng gặp sự cố mạng, có thể gọi trực tiếp endpoint POST `/api/v1/payments/simulate-success` kèm body `{ orderId, token }` qua Postman/curl.
+### BƯỚC 4: ĐẶT ĐƠN MOMO & THANH TOÁN MÔ PHỎNG TRỰC TUYẾN
+* **Thời lượng:** ~ 45 giây.
+* **URL:** `http://localhost:3000/checkout`
+* **Thao tác:**
+  1. Chọn sản phẩm bất kỳ -> Vào trang thanh toán.
+  2. Chọn phương thức **"MOMO"** -> Bấm **Đặt hàng ngay**.
+  3. Hệ thống tự động chuyển hướng sang giao diện **Mô phỏng Cổng thanh toán CSM**.
+  4. Bấm nút **"Xác nhận thanh toán mô phỏng"**.
+* **Lời nói với thầy:** 
+  > *"Cổng thanh toán sinh JWT token có hạn 10 phút mã hoá kèm orderId. Khi khách bấm xác nhận, hệ thống gọi API `simulate-success` chuyển đơn hàng sang `PAID` và tự động kích hoạt Bước 2 của Saga: `confirm-deduct` để trừ hàng thực tế khỏi kho."*
+* **Kết quả mong đợi:** Sau 1.5 giây, trang tự động chuyển hướng về chi tiết đơn hàng với trạng thái `PAID` màu xanh lá.
 
 ---
 
-### BƯỚC 6: XEM LỊCH SỬ ĐƠN HÀNG VÀ HUỶ ĐƠN HÀNG PENDING
-- **Mục tiêu:** Chứng minh State Machine và quyền hạn khách hàng: chỉ được huỷ đơn khi còn ở trạng thái `PENDING`.
-- **URL:** `http://localhost:3000/orders`
-- **Tài khoản sử dụng:** Khách hàng hiện tại.
-- **Thao tác:** 
-  1. Truy cập danh sách đơn hàng cá nhân `/orders`, nhìn thấy cả 2 đơn vừa tạo (1 đơn `PAID`, 1 đơn `PENDING`).
-  2. Mở đơn hàng `PENDING` (đơn COD ở Bước 4), bấm nút **"Huỷ đơn hàng"**.
-- **Kết quả mong đợi:** Đơn hàng chuyển sang `CANCELLED`. Order Service gửi yêu cầu `release-stock` sang Inventory Service để trả lại số lượng tồn kho giữ chỗ.
-- **Phương án dự phòng nếu bước này lỗi:** Nếu nút huỷ trên giao diện không phản hồi, xem trực tiếp trạng thái trong DB hoặc qua API `PATCH /api/v1/orders/:id/status` với body `{"status": "CANCELLED"}`.
+### BƯỚC 5: LỊCH SỬ ĐƠN & KHÁCH TỰ HUỶ ĐƠN PENDING (SAGA BÙ TRỪ)
+* **Thời lượng:** ~ 45 giây.
+* **URL:** `http://localhost:3000/orders`
+* **Thao tác:**
+  1. Vào danh sách đơn hàng cá nhân: thấy đầy đủ các đơn đã đặt.
+  2. Tìm đơn hàng COD vừa tạo ở Bước 3 (trạng thái `PENDING`).
+  3. Bấm nút **"Huỷ đơn"**.
+* **Lời nói với thầy:** 
+  > *"Theo thiết kế State Machine, khách hàng CHỈ được quyền huỷ đơn khi đơn còn `PENDING`. Khi khách huỷ, hệ thống kích hoạt Giao dịch bù trừ (Compensating Transaction) gọi sang Inventory Service thực hiện `release-stock`, giải phóng số lượng giữ chỗ và hoàn trả tồn kho."*
+* **Kết quả mong đợi:** Trạng thái đơn chuyển sang `CANCELLED`. Nút huỷ đơn biến mất (trạng thái kết thúc).
 
 ---
 
-### BƯỚC 7: ĐĂNG XUẤT VÀ ĐĂNG NHẬP VỚI TƯ CÁCH QUẢN LÝ CHI NHÁNH
-- **Mục tiêu:** Kiểm tra cơ chế cấp phát JWT chứa thông tin vai trò `BRANCH_MANAGER` và mã chi nhánh `br-01`.
-- **URL:** `http://localhost:3000/login`
-- **Tài khoản sử dụng:** `manager.q1@csm.vn`
-- **Thao tác:** Bấm Đăng xuất tài khoản khách, nhập email Quản lý chi nhánh Quận 1 và mật khẩu seed, bấm **"Đăng nhập"**.
-- **Kết quả mong đợi:** Đăng nhập thành công, trên thanh menu xuất hiện thêm mục điều hướng **"Quản trị (Admin Portal)"** dẫn tới `/admin`.
-- **Phương án dự phòng nếu bước này lỗi:** Sử dụng tài khoản quản trị tối cao `admin@csm.vn`.
+### BƯỚC 6: ĐĂNG NHẬP QUẢN LÝ Q1 -> KIỂM TRA KHOÁ CHI NHÁNH
+*(Chuyển sang cửa sổ Trình duyệt ẩn danh Tab 2)*
+* **Thời lượng:** ~ 1 phút.
+* **URL:** `http://localhost:3000/admin/orders`
+* **Tài khoản sử dụng:** `manager.q1@csm.vn` | Mật khẩu: `Demo@123456`
+* **Thao tác:**
+  1. Đăng nhập thành công với vai trò Quản lý chi nhánh Bến Nghé Q1.
+  2. Xem danh sách đơn hàng quản trị:
+* **Chỉ cho thầy thấy:** 
+  * Cột chi nhánh: **100% các đơn hiển thị đều có mã `br-01`**. Hoàn toàn không nhìn thấy bất kỳ đơn hàng nào của chi nhánh `br-02` (Q7).
+  * Thử chuyển trạng thái 1 đơn từ `PENDING` sang `CONFIRMED` bằng nút chuyển nhanh.
+* **Lời nói với thầy:** 
+  > *"Tại API Gateway và Order Controller, hệ thống tự động trích xuất `branch_id` từ JWT Claims của Quản lý và ép cứng câu truy vấn `WHERE branch_id = :userBranch`. Client không thể can thiệp URL để xem trộm đơn của chi nhánh khác."*
 
 ---
 
-### BƯỚC 8: QUẢN LÝ ĐƠN HÀNG PHÂN QUYỀN THEO CHI NHÁNH
-- **Mục tiêu:** Chứng minh cơ chế cô lập dữ liệu (Data Isolation): Quản lý chi nhánh chỉ xem được đơn hàng thuộc chi nhánh mình.
-- **URL:** `http://localhost:3000/admin/orders`
-- **Tài khoản sử dụng:** `manager.q1@csm.vn`
-- **Thao tác:** 
-  1. Xem danh sách đơn hàng hiển thị tại bảng quản trị.
-  2. Đối chiếu mã chi nhánh của các đơn hàng hiển thị (toàn bộ đều là `br-01` CSM Bến Nghé).
-  3. Thử chuyển trạng thái 1 đơn hàng từ `CONFIRMED` sang `SHIPPED`.
-- **Kết quả mong đợi:** Chỉ thấy đơn của chi nhánh `br-01`, không thấy đơn của chi nhánh Phú Mỹ Hưng (`br-02`). Chuyển trạng thái đơn thành công theo đúng State Machine.
-- **Phương án dự phòng nếu bước này lỗi:** Dùng lệnh curl gửi kèm token của `manager.q1@csm.vn` gọi API `GET /api/v1/orders` để chứng minh Gateway và Order Service lọc dữ liệu tự động theo `x-branch-id`.
+### BƯỚC 7: QUẢN TRỊ KHO (`/admin/inventory`) & NHẬP THÊM HÀNG
+* **Thời lượng:** ~ 45 giây.
+* **URL:** `http://localhost:3000/admin/inventory`
+* **Thao tác:**
+  1. Chỉ cho thầy thấy bảng tồn kho:
+     * Hiển thị **100% tên sản phẩm thật** ("Trà Sữa Trân Châu CSM", "Cà Phê Sữa Đá Sài Gòn", ...), không có mã lỗi hay placeholder thô.
+     * Hiển thị rõ: Số lượng tồn kho, Số lượng đang giữ (`reserved`), và Số lượng có thể bán (`available`).
+  2. Bấm nút **"Nhập kho" (Restock)** tại 1 sản phẩm -> Nhập thêm 20 cái -> Bấm Lưu.
+* **Kết quả mong đợi:** Tồn kho tăng ngay lập tức và ghi nhận giao dịch nhập kho loại `IN` trong database.
 
 ---
 
-### BƯỚC 9: BÁO CÁO TỒN KHO VÀ NHẬP KHO TẠI CHI NHÁNH
-- **Mục tiêu:** Trình diễn trực quan hoá số liệu Recharts và thao tác nhập kho (`add-stock`) kèm ghi nhật ký giao dịch.
-- **URL:** `http://localhost:3000/admin/inventory`
-- **Tài khoản sử dụng:** `manager.q1@csm.vn`
-- **Thao tác:** 
-  1. Xem biểu đồ Top 5 sản phẩm tồn thấp và cơ cấu trạng thái tồn kho (Đủ hàng / Cảnh báo / Hết hàng).
-  2. Bấm nút **"Nhập kho"** tại góc trên bên phải.
-  3. Chọn sản phẩm, nhập số lượng thêm (ví dụ: `50`), bấm **"Xác nhận nhập kho"**.
-- **Kết quả mong đợi:** Số lượng tồn kho tức thời tăng lên 50, biểu đồ tự động cập nhật lại số liệu, bản ghi `stock_transactions` loại `IN` được lưu vào CSDL.
-- **Phương án dự phòng nếu bước này lỗi:** Xem trực tiếp bảng tồn kho `stocks` trong CSDL `csm_inventory` để chứng minh câu lệnh SQL tăng số lượng thực tế.
+### BƯỚC 8: TỔNG KẾT VỚI THẦY
+* **Thời lượng:** ~ 30 giây.
+* **Lời kết:**
+  > *"Dạ thưa thầy, nhóm đã hoàn thành toàn diện:
+  > 1. Kiến trúc Microservices gồm 8 dịch vụ độc lập kết nối qua API Gateway.
+  > 2. Quản lý nhất quán dữ liệu phân tán bằng Saga Pattern (giữ kho, trừ kho, hoàn kho bù trừ).
+  > 3. Phân quyền chặt chẽ theo chi nhánh vật lý và State Machine nghiêm ngặt cho vòng đời đơn hàng.
+  > 4. Bộ kiểm thử tự động đạt 121/121 ca E2E trên stack thực tế."*
 
 ---
 
-### BƯỚC 10: KIỂM SOÁT AN TOÀN TRUY CẬP (ACCESS CONTROL VERIFICATION)
-- **Mục tiêu:** Chứng minh hệ thống bảo vệ đa tầng (Router Guard ở FE và RolesGuard ở BE) ngăn chặn hoàn toàn việc leo thang đặc quyền.
-- **URL:** `http://localhost:3000/admin`
-- **Tài khoản sử dụng:** Đăng nhập lại tài khoản `customer@csm.vn` (hoặc mở tab ẩn danh đã đăng nhập khách hàng).
-- **Thao tác:** Khách hàng cố tình gõ trực tiếp URL `/admin` hoặc `/admin/orders` lên thanh địa chỉ của trình duyệt.
-- **Kết quả mong đợi:** Hệ thống chặn đứng truy cập ngay lập tức, chuyển hướng người dùng sang trang cảnh báo `http://localhost:3000/unauthorized` với thông báo: *"Bạn không có quyền truy cập khu vực quản trị này"*.
-- **Phương án dự phòng nếu bước này lỗi:** Nếu FE không kịp chặn thì API Gateway và downstream service phía sau cũng sẽ trả về mã lỗi HTTP 403 Forbidden do `RolesGuard` bắt buộc quyền `STAFF`, `BRANCH_MANAGER` hoặc `ADMIN`.
+## 4. BẢNG PHƯƠNG ÁN DỰ PHÒNG NẾU GẶP SỰ CỐ KHI DEMO
+
+| Sự cố phát sinh | Nguyên nhân có thể | Phương án xử lý ngay |
+| :--- | :--- | :--- |
+| Trình duyệt không tải được trang sản phẩm | Do cache trình duyệt cũ | Nhấn `Ctrl + F5` để xoá cache nạp lại bundle mới nhất. |
+| Đăng nhập báo sai mật khẩu | Nhập nhầm ký tự hoa thường | Mật khẩu chuẩn toàn bộ hệ thống là: `Demo@123456`. |
+| Đặt hàng báo lỗi không đủ tồn kho | Do đã mua hết sạch món đó | Chọn món khác hoặc đăng nhập Admin vào `/admin/inventory` bấm nút Nhập kho 50 cái. |
+| Muốn reset làm mới dữ liệu demo ngay | Do đã tạo quá nhiều đơn thử nghiệm | Mở PowerShell chạy lệnh: `npm run seed:demo -- --reset -y && npm run seed:demo`. |
 
 ---
-*Tài liệu hướng dẫn kịch bản demo được lưu trữ tại: `docs/kich-ban-demo-5-phut.md`.*
 
+## 5. BỘ CÂU HỎI THƯỜNG GẶP CỦA GIẢNG VIÊN VÀ CÂU TRẢ LỜI CHUẨN XÁC
+
+### Câu 1: Tại sao nhóm dùng Saga Pattern mà không dùng Distributed Transaction (2PC)?
+* **Trả lời:** Giao thức 2PC (Two-Phase Commit) yêu cầu giữ khoá tài nguyên (Lock) xuyên suốt mạng phân tán, gây tắc nghẽn và giảm hiệu năng nghiêm trọng khi nhiều người cùng đặt hàng. Nhóm áp dụng mô hình **Saga dựa trên Choreography/Orchestration qua REST**:
+  - Bước 1: Giữ kho tạm thời (`reserve-stock`).
+  - Bước 2: Lưu đơn `PENDING` và xử lý thanh toán.
+  - Bước 3: Xác nhận trừ kho thật (`confirm-deduct`) hoặc kích hoạt giao dịch bù trừ hoàn kho (`release-stock`) nếu có lỗi/huỷ đơn.
+* **File minh chứng:** [`apps/order-service/src/order.controller.ts`](file:///E:/TLCN/CSM-BE/apps/order-service/src/order.controller.ts#L82-L138).
+
+### Câu 2: Làm sao giải quyết vấn đề Race Condition khi 2 người cùng đặt 1 sản phẩm cuối cùng?
+* **Trả lời:** Tại Inventory Service, nhóm sử dụng khoá bi quan cấp cơ sở dữ liệu: `lock: { mode: 'pessimistic_write' }` bên trong Database Transaction (`QueryRunner`). Transaction nào đến trước sẽ giữ kho và giảm tồn khả dụng, transaction thứ hai sẽ nhận thông báo lỗi không đủ tồn kho ngay lập tức.
+* **File minh chứng:** [`apps/inventory-service/src/inventory.controller.ts`](file:///E:/TLCN/CSM-BE/apps/inventory-service/src/inventory.controller.ts#L93-L96).
+
+### Câu 3: Làm thế nào đảm bảo Quản lý chi nhánh không xem hoặc sửa được đơn của chi nhánh khác?
+* **Trả lời:** Nhóm kiểm soát 2 lớp:
+  1. Lớp xác thực tại API Gateway: Giải mã JWT token để lấy `role` và `branch_id`.
+  2. Lớp nghiệp vụ tại Order Service: Nếu `role === 'BRANCH_MANAGER'`, câu lệnh TypeORM QueryBuilder tự động ép cứng điều kiện `qb.andWhere('order.branch_id = :userBranch', { userBranch: userBranchId })`, bỏ qua bất kỳ tham số lọc nào mà client truyền lên.
+* **File minh chứng:** [`apps/order-service/src/order.controller.ts`](file:///E:/TLCN/CSM-BE/apps/order-service/src/order.controller.ts#L366-L372).
+
+### Câu 4: Cổng thanh toán mô phỏng được bảo mật như thế nào?
+* **Trả lời:** Không thể can thiệp đổi trạng thái tuỳ tiện vì:
+  1. Cờ mô phỏng `PAYMENT_SIMULATION` chỉ đọc từ biến môi trường máy chủ.
+  2. Đường dẫn thanh toán chứa JWT token được ký bởi `PAYMENT_SIMULATION_SECRET`, mã hoá kèm `orderId` và chỉ có hiệu lực 10 phút.
+  3. API `POST /payments/simulate-success` kiểm tra chữ ký token và xác thực token phải khớp chính xác với `orderId` trước khi chuyển trạng thái đơn.
+* **File minh chứng:** [`apps/payment-service/src/payment.controller.ts`](file:///E:/TLCN/CSM-BE/apps/payment-service/src/payment.controller.ts#L40-L57).
