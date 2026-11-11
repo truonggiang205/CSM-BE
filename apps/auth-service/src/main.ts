@@ -11,7 +11,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  const PORT = process.env.PORT || 3001;
+  const PORT = process.env.AUTH_PORT || 3001;
   await app.listen(PORT);
   console.log(`🔐 Auth Service đang chạy tại port: ${PORT}`);
 }

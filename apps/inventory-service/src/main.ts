@@ -11,7 +11,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  const PORT = process.env.PORT || 3003;
+  const PORT = process.env.INVENTORY_PORT || 3003;
   await app.listen(PORT);
   console.log(`📊 Inventory Service đang chạy tại port: ${PORT}`);
 }
