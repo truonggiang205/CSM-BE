@@ -167,4 +167,13 @@ export class AuthService {
       refreshToken,
     };
   }
+
+  async getUsers(role?: string) {
+    const where = role ? { role: role as UserRole } : {};
+    return await this.userRepository.find({
+      where,
+      select: ['id', 'email', 'role', 'branch_id', 'created_at', 'updated_at'],
+      order: { created_at: 'DESC' },
+    });
+  }
 }
