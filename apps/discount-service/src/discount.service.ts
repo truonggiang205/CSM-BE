@@ -1,15 +1,69 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, OnModuleInit, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { Voucher, DiscountType } from './entities/voucher.entity';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 
 @Injectable()
-export class DiscountService {
+export class DiscountService implements OnModuleInit {
   constructor(
     @InjectRepository(Voucher)
     private readonly voucherRepo: Repository<Voucher>,
   ) {}
+
+  async onModuleInit() {
+    try {
+      const count = await this.voucherRepo.count();
+      if (count === 0) {
+        const now = new Date();
+        const nextYear = new Date();
+        nextYear.setFullYear(now.getFullYear() + 1);
+
+        await this.voucherRepo.save([
+          {
+            code: 'CSM20K',
+            description: 'Giảm 20.000đ cho đơn hàng từ 100.000đ',
+            discount_type: DiscountType.FIXED_AMOUNT,
+            discount_value: 20000,
+            min_order_value: 100000,
+            usage_limit: 1000,
+            used_count: 0,
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
+          },
+          {
+            code: 'CSM10PCT',
+            description: 'Giảm 10% (tối đa 50.000đ) cho đơn hàng từ 150.000đ',
+            discount_type: DiscountType.PERCENTAGE,
+            discount_value: 10,
+            max_discount_amount: 50000,
+            min_order_value: 150000,
+            usage_limit: 500,
+            used_count: 0,
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
+          },
+          {
+            code: 'CSMFREESHIP',
+            description: 'Hỗ trợ 15.000đ phí vận chuyển cho đơn từ 50.000đ',
+            discount_type: DiscountType.FIXED_AMOUNT,
+            discount_value: 15000,
+            min_order_value: 50000,
+            usage_limit: 2000,
+            used_count: 0,
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
+          },
+        ]);
+        console.log('🎉 Đã khởi tạo dữ liệu mẫu 3 Voucher CSM thành công!');
+      }
+    } catch (err: any) {
+      console.warn('⚠️ Seed voucher ban đầu bỏ qua:', err?.message || err);
+    }
+  }
 
   // Lấy danh sách voucher công khai còn hiệu lực
   async getPublicVouchers() {
@@ -53,50 +107,55 @@ export class DiscountService {
       throw new BadRequestException(`Mã giảm giá '${normalizedCode}' đã hết hạn sử dụng.`);
     }
 
-    if (voucher.used_count >= voucher.usage_limit) {
+    if (voucher.usage_limit && voucher.used_count >= voucher.usage_limit) {
       throw new BadRequestException(`Mã giảm giá '${normalizedCode}' đã hết lượt sử dụng.`);
     }
 
-    if (Number(orderValue) < Number(voucher.min_order_value)) {
-      const minValFormatted = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(voucher.min_order_value);
-      throw new BadRequestException(`Đơn hàng phải đạt tối thiểu ${minValFormatted} để áp dụng mã này.`);
+    if (orderValue < Number(voucher.min_order_value)) {
+      throw new BadRequestException(
+        `Đơn hàng chưa đạt giá trị tối thiểu ${Number(voucher.min_order_value).toLocaleString('vi-VN')}đ để dùng mã này.`,
+      );
     }
 
-    // Tính toán số tiền được giảm
     let discountAmount = 0;
     if (voucher.discount_type === DiscountType.FIXED_AMOUNT) {
       discountAmount = Number(voucher.discount_value);
     } else if (voucher.discount_type === DiscountType.PERCENTAGE) {
-      discountAmount = (Number(orderValue) * Number(voucher.discount_value)) / 100;
+      discountAmount = Math.round((orderValue * Number(voucher.discount_value)) / 100);
       if (voucher.max_discount_amount && discountAmount > Number(voucher.max_discount_amount)) {
         discountAmount = Number(voucher.max_discount_amount);
       }
     }
 
-    // Không cho phép giảm vượt quá tổng giá trị đơn
-    discountAmount = Math.min(discountAmount, Number(orderValue));
-    const finalAmount = Math.max(0, Number(orderValue) - discountAmount);
+    if (discountAmount > orderValue) {
+      discountAmount = orderValue;
+    }
 
     return {
-      valid: true,
-      code: voucher.code,
-      discountAmount,
-      finalAmount,
+      isValid: true,
       voucher: {
         id: voucher.id,
         code: voucher.code,
         description: voucher.description,
         discount_type: voucher.discount_type,
-        discount_value: voucher.discount_value,
+        discount_value: Number(voucher.discount_value),
+        max_discount_amount: voucher.max_discount_amount ? Number(voucher.max_discount_amount) : null,
+        min_order_value: Number(voucher.min_order_value),
       },
+      discountAmount,
+      finalAmount: orderValue - discountAmount,
     };
   }
 
-  // Tăng lượt dùng (Claim voucher khi chốt đơn thành công)
+  // Tăng lượt sử dụng khi chốt đơn thành công
   async claimVoucher(code: string) {
     const normalizedCode = code.trim().toUpperCase();
     const voucher = await this.voucherRepo.findOne({ where: { code: normalizedCode } });
     if (!voucher) throw new NotFoundException('Voucher không tồn tại');
+
+    if (voucher.usage_limit && voucher.used_count >= voucher.usage_limit) {
+      throw new BadRequestException('Voucher đã hết số lượt sử dụng');
+    }
 
     voucher.used_count += 1;
     return this.voucherRepo.save(voucher);

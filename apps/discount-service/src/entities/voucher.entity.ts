@@ -6,7 +6,6 @@ export enum DiscountType {
 }
 
 @Entity('vouchers')
-@Index(['code'], { unique: true })
 @Index(['is_active', 'start_date', 'end_date'])
 export class Voucher {
   @PrimaryGeneratedColumn('uuid')
