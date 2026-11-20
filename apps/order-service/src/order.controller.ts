@@ -110,7 +110,7 @@ export class OrderController {
           code: voucherCode.trim(),
           orderValue: subtotal,
         });
-        if (discountRes.data && discountRes.data.valid) {
+        if (discountRes.data && (discountRes.data.valid || discountRes.data.isValid)) {
           discountAmount = Number(discountRes.data.discountAmount) || 0;
           appliedVoucherCode = voucherCode.trim().toUpperCase();
         }
