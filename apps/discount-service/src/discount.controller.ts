@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Query } from '@nestjs/common';
 import { DiscountService } from './discount.service';
 import { ValidateVoucherDto } from './dto/validate-voucher.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
@@ -13,7 +13,10 @@ export class DiscountController {
   }
 
   @Get('vouchers')
-  getPublicVouchers() {
+  getVouchers(@Query('all') all?: string) {
+    if (all === 'true') {
+      return this.discountService.getAllVouchers();
+    }
     return this.discountService.getPublicVouchers();
   }
 

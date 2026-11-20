@@ -24,6 +24,13 @@ export class DiscountService {
     });
   }
 
+  // Lấy toàn bộ danh sách voucher (dành cho Admin)
+  async getAllVouchers() {
+    return this.voucherRepo.find({
+      order: { created_at: 'DESC' },
+    });
+  }
+
   // Thuật toán kiểm tra tính hợp lệ và tính số tiền giảm
   async validateVoucher(code: string, orderValue: number) {
     const normalizedCode = code.trim().toUpperCase();
