@@ -132,7 +132,9 @@ export class DiscountService implements OnModuleInit {
     }
 
     return {
+      valid: true,
       isValid: true,
+      code: voucher.code,
       voucher: {
         id: voucher.id,
         code: voucher.code,
