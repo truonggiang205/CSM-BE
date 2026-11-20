@@ -283,6 +283,8 @@ services:
         condition: service_healthy
       notification-service:
         condition: service_healthy
+      discount-service:
+        condition: service_started
     networks:
       - csm-network
     healthcheck:

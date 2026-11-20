@@ -10,7 +10,6 @@ COPY apps/notification-service/package*.json ./apps/notification-service/
 COPY apps/order-service/package*.json ./apps/order-service/
 COPY apps/payment-service/package*.json ./apps/payment-service/
 COPY apps/product-service/package*.json ./apps/product-service/
-COPY apps/discount-service/package*.json ./apps/discount-service/
 
 RUN --mount=type=cache,target=/root/.npm npm ci
 
@@ -32,7 +31,6 @@ COPY apps/notification-service/package*.json ./apps/notification-service/
 COPY apps/order-service/package*.json ./apps/order-service/
 COPY apps/payment-service/package*.json ./apps/payment-service/
 COPY apps/product-service/package*.json ./apps/product-service/
-COPY apps/discount-service/package*.json ./apps/discount-service/
 
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
