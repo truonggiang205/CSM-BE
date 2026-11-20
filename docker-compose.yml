@@ -142,6 +142,7 @@ services:
       PRODUCT_SERVICE_URL: http://product-service:3002
       PAYMENT_SERVICE_URL: http://payment-service:3005
       NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      DISCOUNT_SERVICE_URL: http://discount-service:3007
       INTERNAL_SECRET: ${INTERNAL_SECRET:-csm-super-secure-internal-secret-token}
     ports:
       - "3004:3004"
@@ -263,6 +264,7 @@ services:
       ORDER_SERVICE_URL: http://order-service:3004
       PAYMENT_SERVICE_URL: http://payment-service:3005
       NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      DISCOUNT_SERVICE_URL: http://discount-service:3007
       UPLOAD_DIR: /app/uploads
     volumes:
       - product_uploads:/app/uploads:ro
