@@ -32,6 +32,9 @@ export class Voucher {
   @Column({ type: 'int', default: 100 })
   usage_limit: number; // Lượt dùng tối đa
 
+  @Column({ type: 'int', default: 1 })
+  max_usage_per_user: number; // Giới hạn lượt dùng trên từng tài khoản (mặc định: 1)
+
   @Column({ type: 'int', default: 0 })
   used_count: number; // Số lượt đã dùng
 
@@ -40,6 +43,9 @@ export class Voucher {
 
   @Column({ type: 'datetime' })
   end_date: Date;
+
+  @Column({ default: false })
+  is_freeship: boolean; // Đánh dấu mã giảm giá vận chuyển (Freeship)
 
   @Column({ default: true })
   is_active: boolean;

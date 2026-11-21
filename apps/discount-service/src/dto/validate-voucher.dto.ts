@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsString, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class ValidateVoucherDto {
   @IsString()
@@ -8,4 +8,13 @@ export class ValidateVoucherDto {
   @IsNumber()
   @Min(0, { message: 'Giá trị đơn hàng phải lớn hơn hoặc bằng 0' })
   orderValue: number;
+
+  @IsString()
+  @IsOptional()
+  userId?: string;
+
+  @IsNumber()
+  @Min(0, { message: 'Phí vận chuyển phải lớn hơn hoặc bằng 0' })
+  @IsOptional()
+  shippingFee?: number;
 }

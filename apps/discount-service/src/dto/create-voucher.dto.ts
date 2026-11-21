@@ -32,6 +32,14 @@ export class CreateVoucherDto {
   @IsOptional()
   usage_limit?: number;
 
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  max_usage_per_user?: number;
+
+  @IsOptional()
+  is_freeship?: boolean;
+
   @IsDateString()
   start_date: string;
 
