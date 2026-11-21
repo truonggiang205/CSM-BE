@@ -101,6 +101,7 @@ export class OrderController {
 
     // --- BƯỚC 1.5: XÁC THỰC VOUCHER TỪ DISCOUNT SERVICE (NẾU CÓ TRUYỀN VOUCHER CODE) ---
     const subtotal = verifiedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    const shippingFee = subtotal >= 150000 ? 0 : 15000;
     let discountAmount = 0;
     let appliedVoucherCode: string | null = null;
 
@@ -109,6 +110,8 @@ export class OrderController {
         const discountRes = await axios.post(`${DISCOUNT_SERVICE_URL}/discounts/vouchers/validate`, {
           code: voucherCode.trim(),
           orderValue: subtotal,
+          userId: userId.toString(),
+          shippingFee: shippingFee,
         });
         if (discountRes.data && (discountRes.data.valid || discountRes.data.isValid)) {
           discountAmount = Number(discountRes.data.discountAmount) || 0;
@@ -126,7 +129,7 @@ export class OrderController {
       }
     }
 
-    const totalAmount = Math.max(0, subtotal - discountAmount);
+    const totalAmount = Math.max(0, subtotal + shippingFee - discountAmount);
 
     // --- BƯỚC 2: TẠO ĐƠN HÀNG VÀ LƯU DATABASE (STATUS: PENDING, GIÁ CHUẨN TỪ SERVER) ---
     let savedOrder: Order;
@@ -155,10 +158,12 @@ export class OrderController {
       savedOrder = await this.orderRepository.save(order);
       console.log(`[OrderService] Đã lưu đơn hàng PENDING vào Database: ${savedOrder.id}`);
 
-      // BƯỚC 2.5: CLAIM VOUCHER (TĂNG SỐ LƯỢT SỬ DỤNG) NẾU CÓ ÁP DỤNG VOUCHER
+      // BƯỚC 2.5: CLAIM VOUCHER (TĂNG SỐ LƯỢT SỬ DỤNG VÀ GHI NHẬN USER) NẾU CÓ ÁP DỤNG VOUCHER
       if (appliedVoucherCode) {
         axios.post(`${DISCOUNT_SERVICE_URL}/discounts/vouchers/claim`, {
           code: appliedVoucherCode,
+          userId: userId.toString(),
+          orderId: savedOrder.id,
         }).catch((e) => console.error('[OrderService] Không cập nhật được used_count của voucher:', e.message));
       }
     } catch (dbError) {
@@ -337,6 +342,20 @@ export class OrderController {
         });
       } catch (err: any) {
         console.error(`[OrderService] Giải phóng kho thất bại khi huỷ đơn ${order.id}:`, err);
+      }
+    }
+
+    // SAGA ROLLBACK: Hoàn lại lượt sử dụng voucher nếu đơn hàng bị huỷ
+    if (newStatus === OrderStatus.CANCELLED && order.voucher_code) {
+      try {
+        console.log(`[OrderService] Đơn hàng ${order.id} bị huỷ, gọi release voucher ${order.voucher_code}...`);
+        await axios.post(`${DISCOUNT_SERVICE_URL}/discounts/vouchers/release`, {
+          code: order.voucher_code,
+          userId: order.user_id,
+          orderId: order.id,
+        });
+      } catch (err: any) {
+        console.error(`[OrderService] Hoàn voucher thất bại khi huỷ đơn ${order.id}:`, err?.message || err);
       }
     }
 

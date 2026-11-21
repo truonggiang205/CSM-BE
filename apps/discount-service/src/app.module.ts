@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DiscountController } from './discount.controller';
 import { DiscountService } from './discount.service';
 import { Voucher } from './entities/voucher.entity';
+import { VoucherUsage } from './entities/voucher-usage.entity';
 
 @Module({
   imports: [
@@ -13,12 +14,12 @@ import { Voucher } from './entities/voucher.entity';
       useFactory: (config: ConfigService) => ({
         type: 'mysql',
         url: config.get<string>('DISCOUNT_DB_URL') || 'mysql://root:rootpassword@localhost:3306/csm_discount',
-        entities: [Voucher],
+        entities: [Voucher, VoucherUsage],
         synchronize: true,
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Voucher]),
+    TypeOrmModule.forFeature([Voucher, VoucherUsage]),
   ],
   controllers: [DiscountController],
   providers: [DiscountService],
