@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Body, Param, Patch, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Query, Req, ForbiddenException } from '@nestjs/common';
 import { DiscountService } from './discount.service';
 import { ValidateVoucherDto } from './dto/validate-voucher.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+
+const getInternalSecret = () => process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token';
 
 @Controller()
 export class DiscountController {
@@ -19,6 +21,10 @@ export class DiscountController {
     @Req() req?: any,
   ) {
     if (all === 'true') {
+      const role = req?.headers?.['x-user-role'];
+      if (role !== 'ADMIN') {
+        throw new ForbiddenException('Chỉ ADMIN mới có quyền xem toàn bộ danh sách voucher');
+      }
       return this.discountService.getAllVouchers();
     }
     const resolvedUserId = userId || req?.headers?.['x-user-id'];
@@ -26,7 +32,11 @@ export class DiscountController {
   }
 
   @Get(['vouchers/:id/usages', 'discounts/vouchers/:id/usages'])
-  getVoucherUsages(@Param('id') id: string) {
+  getVoucherUsages(@Param('id') id: string, @Req() req?: any) {
+    const role = req?.headers?.['x-user-role'];
+    if (role !== 'ADMIN') {
+      throw new ForbiddenException('Chỉ ADMIN mới có quyền xem lịch sử sử dụng voucher');
+    }
     return this.discountService.getVoucherUsages(id);
   }
 
@@ -45,7 +55,12 @@ export class DiscountController {
     @Body('code') code: string,
     @Body('userId') userId?: string,
     @Body('orderId') orderId?: string,
+    @Req() req?: any,
   ) {
+    const isInternal = req?.headers?.['x-internal-secret'] === getInternalSecret();
+    if (!isInternal && req?.headers?.['x-user-role'] !== 'ADMIN') {
+      throw new ForbiddenException('Endpoint chỉ cho phép gọi nội bộ hoặc ADMIN');
+    }
     return this.discountService.claimVoucher(code, userId, orderId);
   }
 
@@ -54,17 +69,30 @@ export class DiscountController {
     @Body('code') code: string,
     @Body('userId') userId?: string,
     @Body('orderId') orderId?: string,
+    @Req() req?: any,
   ) {
+    const isInternal = req?.headers?.['x-internal-secret'] === getInternalSecret();
+    if (!isInternal && req?.headers?.['x-user-role'] !== 'ADMIN') {
+      throw new ForbiddenException('Endpoint chỉ cho phép gọi nội bộ hoặc ADMIN');
+    }
     return this.discountService.releaseVoucher(code, userId, orderId);
   }
 
   @Post(['vouchers', 'discounts/vouchers'])
-  createVoucher(@Body() dto: CreateVoucherDto) {
+  createVoucher(@Body() dto: CreateVoucherDto, @Req() req?: any) {
+    const role = req?.headers?.['x-user-role'];
+    if (role !== 'ADMIN') {
+      throw new ForbiddenException('Chỉ ADMIN mới có quyền tạo voucher');
+    }
     return this.discountService.createVoucher(dto);
   }
 
   @Patch(['vouchers/:id/toggle', 'discounts/vouchers/:id/toggle'])
-  toggleVoucher(@Param('id') id: string) {
+  toggleVoucher(@Param('id') id: string, @Req() req?: any) {
+    const role = req?.headers?.['x-user-role'];
+    if (role !== 'ADMIN') {
+      throw new ForbiddenException('Chỉ ADMIN mới có quyền bật/tắt voucher');
+    }
     return this.discountService.toggleVoucher(id);
   }
 }

@@ -229,6 +229,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       DB_SYNC: ${DB_SYNC:-true}
       DISCOUNT_DB_URL: ${DISCOUNT_DB_URL:-mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_discount}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-csm-super-secure-internal-secret-token}
     ports:
       - "3007:3007"
     depends_on:
