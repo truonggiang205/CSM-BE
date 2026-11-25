@@ -41,4 +41,13 @@ export class Order {
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  subtotal_amount?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  discount_amount?: number;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  voucher_code?: string | null;
 }
