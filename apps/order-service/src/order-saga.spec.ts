@@ -26,6 +26,11 @@ describe('Order Service Saga Rollback Test (Ep loi DB sau khi reserve-stock)', (
     orderItemRepository = {
       create: jest.fn().mockImplementation((dto) => ({ ...dto })),
       save: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        delete: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({

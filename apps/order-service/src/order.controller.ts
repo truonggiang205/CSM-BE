@@ -191,8 +191,18 @@ export class OrderController {
           );
         } catch (claimErr: any) {
           console.error('[OrderService] Không cập nhật được used_count của voucher:', claimErr.response?.data || claimErr.message);
-          // Rollback đơn hàng & tồn kho nếu claim voucher thất bại
-          await this.orderRepository.delete(savedOrder.id);
+          // Rollback đơn hàng (xoá order_items trước để tránh lỗi khoá ngoại) & tồn kho nếu claim voucher thất bại
+          try {
+            await this.orderItemRepository
+              .createQueryBuilder()
+              .delete()
+              .where('order_id = :orderId', { orderId: savedOrder.id })
+              .execute();
+            await this.orderRepository.delete(savedOrder.id);
+          } catch (delErr: any) {
+            console.error('[OrderService] Lỗi khi xoá đơn hàng rollback:', delErr.message);
+          }
+
           try {
             await axios.post(
               `${INVENTORY_SERVICE_URL}/inventory/release-stock`,
