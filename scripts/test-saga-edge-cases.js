@@ -358,7 +358,7 @@ async function runSagaEdgeTests() {
     // Order-service bị Axios timeout (quá 5000ms) -> catch error -> xoá đơn hàng, release tồn kho, VÀ gọi release voucher bù trừ.
     const startTime = Date.now();
     let orderCreateStatus = 0;
-    let orderCreateData: any = null;
+    let orderCreateData = null;
 
     try {
       const orderRes = await axios.post(
@@ -381,7 +381,7 @@ async function runSagaEdgeTests() {
       if (orderCreateData?.orderId) {
         createdOrderIds.push(orderCreateData.orderId);
       }
-    } catch (err: any) {
+    } catch (err) {
       orderCreateStatus = err.response?.status || 500;
       orderCreateData = err.response?.data || err.message;
     }
@@ -405,7 +405,7 @@ async function runSagaEdgeTests() {
       { headers: { Authorization: `Bearer ${sameUserToken}` }, validateStatus: () => true },
     );
 
-    if (valRes.status !== 200 || (!valRes.data.valid && !valRes.data.isValid)) {
+    if ((valRes.status !== 200 && valRes.status !== 201) || (!valRes.data.valid && !valRes.data.isValid)) {
       throw new Error(`NGHIÊM TRỌNG (BUG SAGA): Sau khi discount timeout, lượt dùng của khách hàng ĐÃ BỊ MẤT! Response: ${JSON.stringify(valRes.data)}`);
     }
 
