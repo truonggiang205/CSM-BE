@@ -79,8 +79,8 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
     }
   }
 
-  // 3. Payment simulation endpoint (hỗ trợ trình duyệt redirect mô phỏng thanh toán)
-  if (normPath.startsWith('/payments/simulate-success')) {
+  // 3. Payment simulation & newsletter public endpoints
+  if (normPath.startsWith('/payments/simulate-success') || normPath.startsWith('/notifications/newsletter/subscribe')) {
     return true;
   }
 
