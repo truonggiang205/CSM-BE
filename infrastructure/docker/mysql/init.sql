@@ -9,6 +9,6 @@ GRANT ALL PRIVILEGES ON `csm_auth`.* TO 'root'@'%';
 GRANT ALL PRIVILEGES ON `csm_product`.* TO 'root'@'%';
 GRANT ALL PRIVILEGES ON `csm_inventory`.* TO 'root'@'%';
 GRANT ALL PRIVILEGES ON `csm_order`.* TO 'root'@'%';
-GRANT ALL PRIVILEGES ON `csm_discount`.* TO 'root'@'%;
+GRANT ALL PRIVILEGES ON `csm_discount`.* TO 'root'@'%';
 
 FLUSH PRIVILEGES;
