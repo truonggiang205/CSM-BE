@@ -15,7 +15,7 @@ export class DiscountController {
   }
 
   @Get(['vouchers', 'discounts/vouchers'])
-  getVouchers(
+  async getVouchers(
     @Query('all') all?: string,
     @Query('userId') userId?: string,
     @Req() req?: any,
@@ -32,7 +32,7 @@ export class DiscountController {
   }
 
   @Get(['vouchers/:id/usages', 'discounts/vouchers/:id/usages'])
-  getVoucherUsages(@Param('id') id: string, @Req() req?: any) {
+  async getVoucherUsages(@Param('id') id: string, @Req() req?: any) {
     const role = req?.headers?.['x-user-role'];
     if (role !== 'ADMIN') {
       throw new ForbiddenException('Chỉ ADMIN mới có quyền xem lịch sử sử dụng voucher');
@@ -41,7 +41,7 @@ export class DiscountController {
   }
 
   @Post(['vouchers/validate', 'discounts/vouchers/validate'])
-  validateVoucher(@Body() dto: ValidateVoucherDto) {
+  async validateVoucher(@Body() dto: ValidateVoucherDto) {
     return this.discountService.validateVoucher(
       dto.code,
       dto.orderValue,
@@ -51,7 +51,7 @@ export class DiscountController {
   }
 
   @Post(['vouchers/claim', 'discounts/vouchers/claim'])
-  claimVoucher(
+  async claimVoucher(
     @Body('code') code: string,
     @Body('userId') userId?: string,
     @Body('orderId') orderId?: string,
@@ -65,7 +65,7 @@ export class DiscountController {
   }
 
   @Post(['vouchers/release', 'discounts/vouchers/release'])
-  releaseVoucher(
+  async releaseVoucher(
     @Body('code') code: string,
     @Body('userId') userId?: string,
     @Body('orderId') orderId?: string,
@@ -79,7 +79,7 @@ export class DiscountController {
   }
 
   @Post(['vouchers', 'discounts/vouchers'])
-  createVoucher(@Body() dto: CreateVoucherDto, @Req() req?: any) {
+  async createVoucher(@Body() dto: CreateVoucherDto, @Req() req?: any) {
     const role = req?.headers?.['x-user-role'];
     if (role !== 'ADMIN') {
       throw new ForbiddenException('Chỉ ADMIN mới có quyền tạo voucher');
@@ -88,7 +88,7 @@ export class DiscountController {
   }
 
   @Patch(['vouchers/:id/toggle', 'discounts/vouchers/:id/toggle'])
-  toggleVoucher(@Param('id') id: string, @Req() req?: any) {
+  async toggleVoucher(@Param('id') id: string, @Req() req?: any) {
     const role = req?.headers?.['x-user-role'];
     if (role !== 'ADMIN') {
       throw new ForbiddenException('Chỉ ADMIN mới có quyền bật/tắt voucher');
