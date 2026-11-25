@@ -6,7 +6,7 @@ Hệ thống Backend Microservices phục vụ chuỗi cửa hàng tiện lợi 
 
 ## 🏗️ 1. Kiến Trúc Hệ Thống (Architecture)
 
-Hệ thống được thiết kế theo kiến trúc Microservices phân tán gồm 7 dịch vụ backend, 1 cổng kết nối tập trung, cơ sở dữ liệu đa schema MySQL và ứng dụng web frontend:
+Hệ thống được thiết kế theo kiến trúc Microservices phân tán gồm 8 dịch vụ backend, 1 cổng kết nối tập trung, cơ sở dữ liệu đa schema MySQL và ứng dụng web frontend:
 
 ```
 [ Khách hàng / Quản trị viên ]
@@ -21,7 +21,8 @@ Hệ thống được thiết kế theo kiến trúc Microservices phân tán g�
    ├── Inventory Service (Port 3003)      -> csm_inventory (Branches, GPS Haversine, Pessimistic Stock, Saga)
    ├── Order Service (Port 3004)          -> csm_order (Saga Orchestration, State Machine, Phân quyền đơn)
    ├── Payment Service (Port 3005)        -> Mô phỏng cổng thanh toán (MoMo, ATM VNPay, JWT signed)
-   └── Notification Service (Port 3006)   -> Mô phỏng gửi email / SMS / Push in-memory
+   ├── Notification Service (Port 3006)   -> Mô phỏng gửi email / SMS / Push in-memory
+   └── Discount Service (Port 3007)       -> csm_discount (CRUD Voucher, Validate, Claim/Release Saga, Pessimistic Lock)
 ```
 
 ### Chi tiết các dịch vụ:
@@ -32,7 +33,8 @@ Hệ thống được thiết kế theo kiến trúc Microservices phân tán g�
 5. **Order Service (Port 3004):** Điều phối đặt hàng (Saga Orchestration với cơ chế bù trừ tự động), quản lý máy trạng thái đơn hàng (`PENDING` -> `CONFIRMED` -> `PAID` -> `SHIPPED` / `CANCELLED`), truy vấn và lọc đơn hàng đa tiêu chí theo phân quyền chi nhánh.
 6. **Payment Service (Port 3005 - Mô phỏng):** Mô phỏng cổng thanh toán trực tuyến bảo mật (MoMo, ATM VNPay), cấp token ký số JWT thời hạn 10 phút, hỗ trợ Idempotency khi thanh toán lặp lại.
 7. **Notification Service (Port 3006 - Mô phỏng):** Nhận webhook sự kiện (`order_created`, trạng thái thanh toán) và xử lý in-memory.
-8. **Frontend (Port 3000):** Ứng dụng Web SPA xây dựng bằng React 18, Vite, TailwindCSS, Zustand và Radix UI.
+8. **Discount Service (Port 3007):** Quản lý mã giảm giá / khuyến mãi (`Voucher`), kiểm tra điều kiện áp dụng phía máy chủ, xác thực giới hạn lượt dùng toàn hệ thống và theo người dùng, tham gia chuỗi Saga đặt hàng với cơ chế giữ lượt (`claim`) và hoàn lượt (`release`) bằng khóa bi quan chống tranh chấp tài nguyên.
+9. **Frontend (Port 3000):** Ứng dụng Web SPA xây dựng bằng React 18, Vite, TailwindCSS, Zustand và Radix UI.
 
 ---
 
@@ -58,6 +60,12 @@ docker compose ps
 ```
 *(Chờ các service chuyển sang trạng thái `healthy` qua Docker healthchecks tích hợp).*
 
+> **Lưu ý đối với Docker Volume MySQL đã tồn tại:**
+> File `init.sql` chỉ tự động thực thi khi khởi tạo volume MySQL lần đầu tiên. Nếu hệ thống đã có sẵn volume `csm-be_mysql_data` từ trước khi bổ sung `discount-service`, cần chủ động tạo database `csm_discount` mà không làm mất dữ liệu cũ bằng lệnh sau:
+> ```bash
+> docker compose exec mysql mysql -uroot -prootpassword -e "CREATE DATABASE IF NOT EXISTS csm_discount CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON csm_discount.* TO 'root'@'%'; FLUSH PRIVILEGES;"
+> ```
+
 ---
 
 ## 🔑 3. Danh Sách Biến Môi Trường (`.env.example`)
@@ -72,6 +80,7 @@ Bảng dưới đây mô tả chi tiết các biến cấu hình trong `.env`:
 | `PRODUCT_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_product` | Chuỗi kết nối Database MySQL cho Product Service |
 | `INVENTORY_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_inventory` | Chuỗi kết nối Database MySQL cho Inventory Service |
 | `ORDER_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_order` | Chuỗi kết nối Database MySQL cho Order Service |
+| `DISCOUNT_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_discount` | Chuỗi kết nối Database MySQL cho Discount Service |
 | `JWT_SECRET` | Khóa bí mật min 32 ký tự | Khóa bí mật dùng để ký và xác thực Access Token JWT |
 | `JWT_REFRESH_SECRET` | Khóa bí mật min 32 ký tự | Khóa bí mật dùng để ký và xác thực Refresh Token JWT |
 | `INTERNAL_SECRET` | Khóa bí mật nội bộ | Khóa bảo mật giao tiếp nội bộ giữa các microservices |
@@ -81,6 +90,7 @@ Bảng dưới đây mô tả chi tiết các biến cấu hình trong `.env`:
 | `ORDER_SERVICE_URL` | `http://order-service:3004` | URL nội bộ của Order Service cho API Gateway |
 | `PAYMENT_SERVICE_URL` | `http://payment-service:3005` | URL nội bộ của Payment Service cho API Gateway |
 | `NOTIFICATION_SERVICE_URL` | `http://notification-service:3006` | URL nội bộ của Notification Service cho API Gateway |
+| `DISCOUNT_SERVICE_URL` | `http://discount-service:3007` | URL nội bộ của Discount Service cho API Gateway và Order Service |
 | `PAYMENT_SIMULATION` | `true` | Cờ kích hoạt/vô hiệu tính năng mô phỏng thanh toán trực tuyến |
 | `PAYMENT_SIMULATION_SECRET`| Khóa bí mật ký token thanh toán | Khóa ký số token JWT cho link mô phỏng thanh toán 10 phút |
 | `PUBLIC_GATEWAY_URL` | `http://localhost:8000` | URL công khai của API Gateway dùng cho redirect thanh toán |
