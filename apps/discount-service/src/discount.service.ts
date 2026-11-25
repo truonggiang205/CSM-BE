@@ -389,12 +389,22 @@ export class DiscountService implements OnModuleInit {
       throw new ConflictException(`Mã voucher '${code}' đã tồn tại trong hệ thống.`);
     }
 
+    if (dto.discount_type === DiscountType.PERCENTAGE && dto.discount_value > 100) {
+      throw new BadRequestException('Phần trăm giảm giá không được vượt quá 100%.');
+    }
+
+    const startDate = new Date(dto.start_date);
+    const endDate = new Date(dto.end_date);
+    if (endDate <= startDate) {
+      throw new BadRequestException('Ngày kết thúc phải lớn hơn ngày bắt đầu áp dụng.');
+    }
+
     const voucher = this.voucherRepo.create({
       ...dto,
       code,
       max_usage_per_user: dto.max_usage_per_user || 1,
-      start_date: new Date(dto.start_date),
-      end_date: new Date(dto.end_date),
+      start_date: startDate,
+      end_date: endDate,
     });
     return this.voucherRepo.save(voucher);
   }

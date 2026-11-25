@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsEnum, IsNumber, Min, IsOptional, IsDateString } from 'class-validator';
+import { IsNotEmpty, IsString, IsEnum, IsNumber, Min, IsOptional, IsDateString, IsBoolean } from 'class-validator';
 import { DiscountType } from '../entities/voucher.entity';
 
 export class CreateVoucherDto {
@@ -38,6 +38,7 @@ export class CreateVoucherDto {
   max_usage_per_user?: number;
 
   @IsOptional()
+  @IsBoolean()
   is_freeship?: boolean;
 
   @IsDateString()
