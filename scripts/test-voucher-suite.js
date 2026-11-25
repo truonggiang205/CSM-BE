@@ -1,16 +1,22 @@
 const axios = require('axios');
 const dotenv = require('dotenv');
 const path = require('path');
+const mysql = require('mysql2/promise');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:8000/api/v1';
+const shouldCleanup = process.argv.includes('--cleanup');
 
 async function run() {
   console.log('===============================================================');
   console.log('🧪 BẮT ĐẦU CHẠY BỘ TEST CHUYÊN SÂU VOUCHER / DISCOUNT SERVICE');
-  console.log(`Endpoint: ${BASE_URL}`);
+  console.log(`Endpoint: ${BASE_URL} | Cleanup: ${shouldCleanup ? 'ON' : 'OFF'}`);
   console.log('===============================================================\n');
+
+  const createdOrderIds = [];
+  const createdVoucherCodes = [];
+  const createdUserIds = [];
 
   // 1. Đăng nhập ADMIN & CUSTOMER
   let adminToken = '';
@@ -20,7 +26,7 @@ async function run() {
   try {
     const adminLogin = await axios.post(`${BASE_URL}/auth/login`, {
       email: 'admin@csm.vn',
-      password: process.env.SEED_PASSWORD || 'Admin@123456',
+      password: process.env.SEED_PASSWORD || 'Demo@123456',
     });
     adminToken = adminLogin.data.accessToken;
     console.log('✅ 0.1 Đăng nhập ADMIN thành công');
@@ -38,18 +44,20 @@ async function run() {
     });
     customerToken = custReg.data.accessToken;
     customerUserId = custReg.data.user?.id || 'cust-id';
+    createdUserIds.push(customerUserId);
     console.log('✅ 0.2 Đăng ký & đăng nhập CUSTOMER thành công, userId:', customerUserId);
   } catch (err) {
     console.error('❌ 0.2 Đăng ký CUSTOMER thất bại:', err.response?.data || err.message);
     process.exit(1);
   }
 
-  // Lấy 1 sản phẩm thật để test đặt đơn
+  // Lấy 1 sản phẩm thật để test đặt đơn có sẵn hàng
   let testProductId = '';
   let testProductPrice = 0;
   try {
-    const pRes = await axios.get(`${BASE_URL}/products?limit=1`);
-    const p = pRes.data.items ? pRes.data.items[0] : pRes.data[0];
+    const pRes = await axios.get(`${BASE_URL}/products?limit=50`);
+    const items = pRes.data.items || pRes.data || [];
+    const p = items.find(prod => prod.id !== '0dd7adf4-205f-4d68-83b1-ef7752de70a2') || items[0];
     testProductId = p.id;
     testProductPrice = Number(p.base_price) || 20000;
     console.log(`✅ 0.3 Lấy sản phẩm test: ${p.name} (ID: ${testProductId}, Giá: ${testProductPrice}đ)`);
@@ -74,6 +82,7 @@ async function run() {
 
   const suffix = Date.now().toString().slice(-6);
   const testVoucherCode = `TEST_VOUCHER_${suffix}`;
+  createdVoucherCodes.push(testVoucherCode);
 
   // Ca 1: Tạo voucher bằng token ADMIN
   await testCase('CA 1', 'Tạo voucher hợp lệ bằng token ADMIN', async () => {
@@ -185,6 +194,7 @@ async function run() {
 
     if (res.status !== 201 && res.status !== 200) throw new Error(`HTTP status: ${res.status}`);
     firstOrderId = res.data.orderId;
+    if (firstOrderId) createdOrderIds.push(firstOrderId);
 
     // Lấy thông tin đơn hàng để kiểm tra các trường tiền
     const orderRes = await axios.get(`${BASE_URL}/orders/${firstOrderId}`, {
@@ -231,6 +241,7 @@ async function run() {
   await testCase('CA 6', '10 request đồng thời cho voucher còn đúng 1 lượt dùng', async () => {
     // 6.1 Tạo voucher có usage_limit = 1
     const singleCode = `CONCURRENT_${Date.now()}`;
+    createdVoucherCodes.push(singleCode);
     await axios.post(
       `${BASE_URL}/vouchers`,
       {
@@ -268,6 +279,10 @@ async function run() {
     const successes = responses.filter(r => r.status === 201 || r.status === 200);
     const failures = responses.filter(r => r.status >= 400);
 
+    for (const s of successes) {
+      if (s.data?.orderId) createdOrderIds.push(s.data.orderId);
+    }
+
     if (successes.length !== 1) {
       throw new Error(`RACE CONDITION PHÁT HIỆN: Có ${successes.length}/10 request thành công (Kỳ vọng DUY NHẤT 1)`);
     }
@@ -301,6 +316,67 @@ async function run() {
     }
     return `Đơn #${firstOrderId} đã huỷ và voucher ${testVoucherCode} đã được mở lại cho User`;
   });
+
+  // ============================================================================
+  // DỌN DẸP DỮ LIỆU (--cleanup)
+  // ============================================================================
+  if (shouldCleanup) {
+    console.log('\n---------------------------------------------------------------');
+    console.log('🧹 BẮT ĐẦU DỌN DẸP DỮ LIỆU TEST VOUCHER (--cleanup)...');
+    console.log('---------------------------------------------------------------');
+
+    const rawOrderUrl = process.env.ORDER_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_order';
+    const parsedOrder = new URL(rawOrderUrl);
+    const connOrder = await mysql.createConnection({
+      host: parsedOrder.hostname || 'localhost',
+      port: Number(parsedOrder.port) || 3306,
+      user: parsedOrder.username || 'root',
+      password: parsedOrder.password || 'rootpassword',
+      database: parsedOrder.pathname.replace(/^\//, '') || 'csm_order',
+    });
+
+    const rawDiscUrl = process.env.DISCOUNT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_discount';
+    const parsedDisc = new URL(rawDiscUrl);
+    const connDisc = await mysql.createConnection({
+      host: parsedDisc.hostname || 'localhost',
+      port: Number(parsedDisc.port) || 3306,
+      user: parsedDisc.username || 'root',
+      password: parsedDisc.password || 'rootpassword',
+      database: parsedDisc.pathname.replace(/^\//, '') || 'csm_discount',
+    });
+
+    const rawAuthUrl = process.env.AUTH_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_auth';
+    const parsedAuth = new URL(rawAuthUrl);
+    const connAuth = await mysql.createConnection({
+      host: parsedAuth.hostname || 'localhost',
+      port: Number(parsedAuth.port) || 3306,
+      user: parsedAuth.username || 'root',
+      password: parsedAuth.password || 'rootpassword',
+      database: parsedAuth.pathname.replace(/^\//, '') || 'csm_auth',
+    });
+
+    if (createdOrderIds.length > 0) {
+      await connOrder.query(`DELETE FROM \`order_items\` WHERE \`order_id\` IN (?);`, [createdOrderIds]);
+      await connOrder.query(`DELETE FROM \`orders\` WHERE \`id\` IN (?);`, [createdOrderIds]);
+      console.log(`   🗑️ Đã xoá ${createdOrderIds.length} đơn hàng kiểm thử.`);
+    }
+
+    if (createdVoucherCodes.length > 0) {
+      await connDisc.query(`DELETE FROM \`voucher_usages\` WHERE \`voucher_id\` IN (SELECT id FROM \`vouchers\` WHERE \`code\` IN (?));`, [createdVoucherCodes]);
+      await connDisc.query(`DELETE FROM \`vouchers\` WHERE \`code\` IN (?);`, [createdVoucherCodes]);
+      console.log(`   🗑️ Đã xoá ${createdVoucherCodes.length} voucher kiểm thử và các bản ghi sử dụng.`);
+    }
+
+    if (createdUserIds.length > 0) {
+      await connAuth.query(`DELETE FROM \`users\` WHERE \`id\` IN (?);`, [createdUserIds]);
+      console.log(`   🗑️ Đã xoá ${createdUserIds.length} người dùng kiểm thử.`);
+    }
+
+    await connOrder.end();
+    await connDisc.end();
+    await connAuth.end();
+    console.log('   ✅ Hoàn tất dọn dẹp sạch sẽ dữ liệu kiểm thử.');
+  }
 
   console.log('\n===============================================================');
   console.log('📊 TỔNG KẾT BỘ KIỂM THỬ VOUCHER:');
