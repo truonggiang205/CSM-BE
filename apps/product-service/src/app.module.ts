@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductController } from './product.controller';
 import { Product } from './entities/product.entity';
 import { Category } from './entities/category.entity';
+import { WishlistItem } from './entities/wishlist.entity';
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { Category } from './entities/category.entity';
       useFactory: (configService: ConfigService) => ({
         type: 'mysql',
         url: configService.get<string>('PRODUCT_DB_URL'),
-        entities: [Product, Category],
+        entities: [Product, Category, WishlistItem],
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
           configService.get<string>('DB_SYNC') === 'true',
@@ -29,7 +30,7 @@ import { Category } from './entities/category.entity';
 
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Product, Category]),
+    TypeOrmModule.forFeature([Product, Category, WishlistItem]),
   ],
   controllers: [ProductController],
   providers: [],

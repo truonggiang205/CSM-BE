@@ -3,10 +3,12 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Body,
   Query,
+  Req,
   NotFoundException,
   BadRequestException,
   UseGuards,
@@ -24,6 +26,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { Product } from './entities/product.entity';
 import { Category } from './entities/category.entity';
+import { WishlistItem } from './entities/wishlist.entity';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -41,6 +44,8 @@ export class ProductController {
     private readonly productRepository: Repository<Product>,
     @InjectRepository(Category)
     private readonly categoryRepository: Repository<Category>,
+    @InjectRepository(WishlistItem)
+    private readonly wishlistRepository: Repository<WishlistItem>,
   ) {}
 
   @Get('health')
@@ -140,6 +145,56 @@ export class ProductController {
     };
   }
 
+  @Get('products/wishlist/my')
+  async getMyWishlist(@Req() req: any) {
+    const userId = req?.headers?.['x-user-id'];
+    if (!userId) return [];
+    const items = await this.wishlistRepository.find({
+      where: { user_id: String(userId) },
+      order: { created_at: 'DESC' },
+    });
+    return items.map((i) => i.product_id);
+  }
+
+  @Post('products/:id/wishlist')
+  async toggleWishlist(@Param('id') id: string, @Req() req: any) {
+    const userId = req?.headers?.['x-user-id'];
+    if (!userId) {
+      return { wishlisted: false, productId: id };
+    }
+    const existing = await this.wishlistRepository.findOne({
+      where: { user_id: String(userId), product_id: String(id) },
+    });
+    if (existing) {
+      await this.wishlistRepository.remove(existing);
+      return { wishlisted: false, productId: id };
+    }
+    const created = this.wishlistRepository.create({
+      user_id: String(userId),
+      product_id: String(id),
+    });
+    await this.wishlistRepository.save(created);
+    return { wishlisted: true, productId: id };
+  }
+
+  @Roles('ADMIN', 'BRANCH_MANAGER')
+  @Patch('products/:id/featured')
+  async toggleFeatured(
+    @Param('id') id: string,
+    @Body() body: { is_featured?: boolean; curator_note?: string },
+  ) {
+    const product = await this.productRepository.findOne({ where: { id }, relations: ['category'] });
+    if (!product) {
+      throw new NotFoundException('Không tìm thấy sản phẩm');
+    }
+    product.is_featured =
+      body?.is_featured !== undefined ? Boolean(body.is_featured) : !Boolean(product.is_featured);
+    if (body?.curator_note !== undefined) {
+      product.curator_note = body.curator_note;
+    }
+    return this.productRepository.save(product);
+  }
+
   @Get('products/:id')
   async getProductById(@Param('id') id: string) {
     const product = await this.productRepository.findOne({
@@ -190,6 +245,8 @@ export class ProductController {
     if (body.description !== undefined) product.description = body.description;
     if (body.base_price !== undefined) product.base_price = body.base_price;
     if (body.image_url !== undefined) product.image_url = body.image_url;
+    if (body.is_featured !== undefined) product.is_featured = body.is_featured;
+    if (body.curator_note !== undefined) product.curator_note = body.curator_note;
 
     return this.productRepository.save(product);
   }
