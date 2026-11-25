@@ -326,7 +326,7 @@ describe('DiscountService & DiscountController Unit Tests', () => {
           discount_type: DiscountType.FIXED_AMOUNT,
           discount_value: 30000,
           start_date: new Date().toISOString(),
-          end_date: new Date().toISOString(),
+          end_date: new Date(Date.now() + 86400000).toISOString(),
         },
         mockReq,
       );
