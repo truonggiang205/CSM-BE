@@ -63,7 +63,7 @@ docker compose ps
 > **Lưu ý đối với Docker Volume MySQL đã tồn tại:**
 > File `init.sql` chỉ tự động thực thi khi khởi tạo volume MySQL lần đầu tiên. Nếu hệ thống đã có sẵn volume `csm-be_mysql_data` từ trước khi bổ sung `discount-service`, cần chủ động tạo database `csm_discount` mà không làm mất dữ liệu cũ bằng lệnh sau:
 > ```bash
-> docker compose exec mysql mysql -uroot -prootpassword -e "CREATE DATABASE IF NOT EXISTS csm_discount CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON csm_discount.* TO 'root'@'%'; FLUSH PRIVILEGES;"
+> docker compose exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-rootpassword}" mysql mysql -uroot -e "CREATE DATABASE IF NOT EXISTS csm_discount CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON csm_discount.* TO 'root'@'%'; FLUSH PRIVILEGES;"
 > ```
 
 ---
@@ -76,11 +76,11 @@ Bảng dưới đây mô tả chi tiết các biến cấu hình trong `.env`:
 | :--- | :--- | :--- |
 | `NODE_ENV` | `development` / `production` | Môi trường chạy hệ thống (dev kích hoạt Swagger docs) |
 | `PORT` | `8000` | Cổng lắng nghe chính của API Gateway |
-| `AUTH_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_auth` | Chuỗi kết nối Database MySQL cho Auth Service |
-| `PRODUCT_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_product` | Chuỗi kết nối Database MySQL cho Product Service |
-| `INVENTORY_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_inventory` | Chuỗi kết nối Database MySQL cho Inventory Service |
-| `ORDER_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_order` | Chuỗi kết nối Database MySQL cho Order Service |
-| `DISCOUNT_DB_URL` | `mysql://root:rootpassword@mysql:3306/csm_discount` | Chuỗi kết nối Database MySQL cho Discount Service |
+| `AUTH_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_auth` | Chuỗi kết nối Database MySQL cho Auth Service |
+| `PRODUCT_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_product` | Chuỗi kết nối Database MySQL cho Product Service |
+| `INVENTORY_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_inventory` | Chuỗi kết nối Database MySQL cho Inventory Service |
+| `ORDER_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_order` | Chuỗi kết nối Database MySQL cho Order Service |
+| `DISCOUNT_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_discount` | Chuỗi kết nối Database MySQL cho Discount Service |
 | `JWT_SECRET` | Khóa bí mật min 32 ký tự | Khóa bí mật dùng để ký và xác thực Access Token JWT |
 | `JWT_REFRESH_SECRET` | Khóa bí mật min 32 ký tự | Khóa bí mật dùng để ký và xác thực Refresh Token JWT |
 | `INTERNAL_SECRET` | Khóa bí mật nội bộ | Khóa bảo mật giao tiếp nội bộ giữa các microservices |
