@@ -204,8 +204,30 @@ export class OrderController {
               { timeout: 5000 },
             );
           } catch {}
+
+          // SAGA BÙ TRỪ: Nếu claim thất bại hoặc timeout quá 5s nhưng discount-service đã trừ lượt,
+          // luôn gọi idempotent release để hoàn lại lượt sử dụng, bảo đảm user không bị mất voucher
+          try {
+            await axios.post(
+              `${DISCOUNT_SERVICE_URL}/discounts/vouchers/release`,
+              {
+                code: appliedVoucherCode,
+                userId: userId.toString(),
+                orderId: savedOrder.id,
+              },
+              {
+                headers: {
+                  'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+                },
+                timeout: 5000,
+              },
+            );
+          } catch (relErr: any) {
+            console.error('[OrderService] Lỗi giải phóng voucher trong rollback:', relErr.message);
+          }
+
           throw new HttpException(
-            claimErr.response?.data?.message || 'Voucher đã hết lượt sử dụng trong lúc đặt hàng',
+            claimErr.response?.data?.message || 'Voucher đã hết lượt sử dụng hoặc timeout trong lúc đặt hàng',
             HttpStatus.BAD_REQUEST,
           );
         }

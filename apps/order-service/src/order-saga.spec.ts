@@ -133,4 +133,75 @@ describe('Order Service Saga Rollback Test (Ep loi DB sau khi reserve-stock)', (
     console.log('   - referenceId:', releaseStockCalledWith.referenceId);
     console.log('   - items hoàn kho:', releaseStockCalledWith.items);
   });
+
+  it('Khi claim voucher bị timeout / thất bại -> BAT BUOC phai xoa order, release-stock VA release voucher bu tru', async () => {
+    const mockReq = {
+      user: { id: 'usr-test-456', role: 'CUSTOMER' },
+      headers: {},
+    };
+
+    const orderDto = {
+      branchId: 'br-01',
+      items: [{ productId: 'prod-001', quantity: 1 }],
+      shippingAddress: '456 Nguyen Luong Bang, Quan 7, TP.HCM',
+      paymentMethod: 'COD',
+      voucherCode: 'VOUCHER_SAGA_TEST',
+    };
+
+    // 1. Mock xác thực chi nhánh, sản phẩm, và voucher hợp lệ
+    mockedAxios.get.mockImplementation((url: string) => {
+      if (url.includes('/branches/')) {
+        return Promise.resolve({ data: { id: 'br-01', name: 'Chi nhánh Q1' }, status: 200 } as any);
+      }
+      if (url.includes('/products/')) {
+        return Promise.resolve({ data: { id: 'prod-001', name: 'Trà Sữa Trân Châu', base_price: 50000 }, status: 200 } as any);
+      }
+      return Promise.reject(new Error('Unknown GET URL'));
+    });
+
+    let releaseStockCalled = false;
+    let releaseVoucherCalled = false;
+    let releasedVoucherCode = '';
+    orderRepository.delete = jest.fn().mockResolvedValue({ affected: 1 });
+    orderRepository.save = jest.fn().mockImplementation((order) => Promise.resolve({ ...order, id: 'ord-test-saga-001' }));
+
+    mockedAxios.post.mockImplementation((url: string, body: any) => {
+      if (url.includes('/inventory/reserve-stock')) {
+        return Promise.resolve({ data: { success: true }, status: 200 } as any);
+      }
+      if (url.includes('/discounts/vouchers/validate')) {
+        return Promise.resolve({ data: { valid: true, discountAmount: 10000 }, status: 200 } as any);
+      }
+      if (url.includes('/discounts/vouchers/claim')) {
+        // Giả lập claim bị timeout 5s hoặc lỗi mạng
+        return Promise.reject(new Error('ECONNABORTED: timeout of 5000ms exceeded'));
+      }
+      if (url.includes('/inventory/release-stock')) {
+        releaseStockCalled = true;
+        return Promise.resolve({ data: { success: true }, status: 200 } as any);
+      }
+      if (url.includes('/discounts/vouchers/release')) {
+        releaseVoucherCalled = true;
+        releasedVoucherCode = body.code;
+        return Promise.resolve({ data: { success: true }, status: 200 } as any);
+      }
+      return Promise.resolve({ data: {}, status: 200 } as any);
+    });
+
+    // 2. Thực thi tạo đơn và kỳ vọng ném ra HTTP 400 Bad Request
+    await expect(orderController.createOrder(mockReq, orderDto as any)).rejects.toThrow(
+      HttpException,
+    );
+
+    // 3. XÁC NHẬN TOÀN BỘ SAGA BÙ TRỪ:
+    // (a) Đơn hàng tạm trong DB bị xoá
+    expect(orderRepository.delete).toHaveBeenCalledWith('ord-test-saga-001');
+    // (b) Kho hàng được giải phóng
+    expect(releaseStockCalled).toBe(true);
+    // (c) Voucher được gọi bù trừ release để hoàn lại lượt dùng cho user
+    expect(releaseVoucherCalled).toBe(true);
+    expect(releasedVoucherCode).toBe('VOUCHER_SAGA_TEST');
+
+    console.log('✅ XÁC NHẬN SAGA BÙ TRỪ TIMEOUT THÀNH CÔNG: Order đã xoá, kho đã hoàn, voucher đã release.');
+  });
 });
