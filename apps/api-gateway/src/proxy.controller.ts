@@ -73,7 +73,8 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
       normPath.startsWith('/products') ||
       normPath.startsWith('/categories') ||
       normPath.startsWith('/branches') ||
-      normPath.startsWith('/inventory')
+      normPath.startsWith('/inventory') ||
+      normPath.startsWith('/orders/reviews/public')
     ) {
       return true;
     }
