@@ -16,6 +16,8 @@ const SERVICE_MAP: Record<string, string> = {
   payments: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005',
   notifications: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
   uploads: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
+  vouchers: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  discounts: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
 };
 
 function isPublicEndpoint(method: string, pathUrl: string): boolean {
@@ -33,6 +35,14 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
 
   // File uploads route is public
   if (normPath.startsWith('/uploads')) {
+    return true;
+  }
+  
+    // Voucher public validation & list
+  if (normPath.startsWith('/vouchers/validate') || normPath.startsWith('/discounts/vouchers/validate')) {
+    return true;
+  }
+  if (m === 'GET' && (normPath.startsWith('/vouchers') || normPath.startsWith('/discounts'))) {
     return true;
   }
 
