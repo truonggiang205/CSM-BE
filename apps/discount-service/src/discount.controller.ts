@@ -63,14 +63,15 @@ export class DiscountController {
     }
     const result = await this.discountService.claimVoucher(code, userId, orderId);
 
-    // Hỗ trợ mô phỏng timeout trong kiểm thử Saga biên:
-    // Nếu mã voucher chứa TIMEOUT hoặc có header x-simulate-delay-ms, delay 5.5s để kích hoạt timeout >5s phía order-service
-    const delayMs = req?.headers?.['x-simulate-delay-ms']
-      ? parseInt(req.headers['x-simulate-delay-ms'], 10)
-      : (code && code.includes('TIMEOUT') ? 5500 : 0);
+    // Chỉ bật hook mô phỏng trễ khi ENABLE_TEST_DELAY === 'true' (mặc định tắt ở production/dev)
+    if (process.env.ENABLE_TEST_DELAY === 'true') {
+      const delayMs = req?.headers?.['x-simulate-delay-ms']
+        ? parseInt(req.headers['x-simulate-delay-ms'], 10)
+        : (code && code.includes('TIMEOUT') ? 5500 : 0);
 
-    if (delayMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
     }
 
     return result;
