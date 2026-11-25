@@ -127,6 +127,7 @@ describe('DiscountService & DiscountController Unit Tests', () => {
           setLock: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           getOne: jest.fn(async () => mockVouchers[0] || null),
+          getMany: jest.fn(async () => mockUsages.filter((u: any) => u.status === 'USED')),
         })),
       };
       return await cb(mockManager);

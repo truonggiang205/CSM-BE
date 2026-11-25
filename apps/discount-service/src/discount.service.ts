@@ -250,18 +250,7 @@ export class DiscountService implements OnModuleInit {
     const normalizedCode = code.trim().toUpperCase();
 
     return await this.dataSource.transaction(async (manager) => {
-      // 1. Kiểm tra tính Idempotent: Nếu orderId này đã claim voucher rồi thì trả về kết quả thành công, không trừ lần 2
-      if (orderId) {
-        const existingUsage = await manager.findOne(VoucherUsage, {
-          where: { order_id: orderId, status: UsageStatus.USED },
-        });
-        if (existingUsage) {
-          const existingVoucher = await manager.findOne(Voucher, { where: { id: existingUsage.voucher_id } });
-          return existingVoucher;
-        }
-      }
-
-      // 2. Khóa dòng voucher (SELECT FOR UPDATE) để đồng bộ hóa tuyệt đối giữa các request đồng thời
+      // 1. Khóa dòng voucher (SELECT FOR UPDATE) ngay từ đầu để serialize giao dịch và chống MVCC phantom snapshot
       const voucher = await manager
         .createQueryBuilder(Voucher, 'v')
         .setLock('pessimistic_write')
@@ -270,6 +259,16 @@ export class DiscountService implements OnModuleInit {
 
       if (!voucher) {
         throw new NotFoundException('Voucher không tồn tại');
+      }
+
+      // 2. Kiểm tra tính Idempotent: Nếu orderId này đã claim voucher rồi thì trả về kết quả thành công, không trừ lần 2
+      if (orderId) {
+        const existingUsage = await manager.findOne(VoucherUsage, {
+          where: { order_id: orderId, status: UsageStatus.USED },
+        });
+        if (existingUsage) {
+          return voucher;
+        }
       }
 
       if (!voucher.is_active) {
@@ -286,17 +285,20 @@ export class DiscountService implements OnModuleInit {
         throw new BadRequestException('Voucher đã hết số lượt sử dụng trên hệ thống');
       }
 
-      // 4. Kiểm tra giới hạn dùng của User dưới khoá giao dịch (chống race condition khi user gửi đồng thời)
+      // 4. Kiểm tra giới hạn dùng của User dưới khoá giao dịch (dùng locking current read chống phantom snapshot)
       if (userId && userId.trim() !== '' && userId !== 'anonymous') {
         const maxPerUser = voucher.max_usage_per_user || 1;
-        const userUsageCount = await manager.count(VoucherUsage, {
-          where: {
-            voucher_id: voucher.id,
-            user_id: userId.trim(),
+        const userUsages = await manager
+          .createQueryBuilder(VoucherUsage, 'u')
+          .setLock('pessimistic_write')
+          .where('u.voucher_id = :voucherId AND u.user_id = :userId AND u.status = :status', {
+            voucherId: voucher.id,
+            userId: userId.trim(),
             status: UsageStatus.USED,
-          },
-        });
-        if (userUsageCount >= maxPerUser) {
+          })
+          .getMany();
+
+        if (userUsages.length >= maxPerUser) {
           throw new BadRequestException('Bạn đã dùng hết số lượt cho phép của voucher này');
         }
       }
@@ -337,14 +339,18 @@ export class DiscountService implements OnModuleInit {
       }
 
       // 2. Kiểm tra tính Idempotent: Chỉ giảm used_count nếu tìm thấy lượt dùng USED thật sự
-      if (userId && orderId) {
+      if (orderId) {
+        const whereClause: any = {
+          voucher_id: voucher.id,
+          order_id: orderId.trim(),
+          status: UsageStatus.USED,
+        };
+        if (userId && userId.trim() !== '') {
+          whereClause.user_id = userId.trim();
+        }
+
         const usage = await manager.findOne(VoucherUsage, {
-          where: {
-            voucher_id: voucher.id,
-            user_id: userId.trim(),
-            order_id: orderId.trim(),
-            status: UsageStatus.USED,
-          },
+          where: whereClause,
         });
 
         if (!usage) {

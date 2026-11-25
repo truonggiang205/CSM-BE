@@ -211,7 +211,10 @@ export class OrderController {
         }
       }
     } catch (dbError) {
-      // SAGA PATTERN: BƯỚC 2 BỊ LỖI -> GỌI SAGA BÙ TRỪ GIẢI PHÓNG KHO (RELEASE STOCK)
+      if (dbError instanceof HttpException) {
+        throw dbError;
+      }
+      // SAGA PATTERN: BƯỚC 2 BỊ LỖI -> GỌI SAGA BÙ TRỪ GIẢI PHÓNG KHO (RELEASE STOCK) VÀ VOUCHER
       console.error(`[OrderService] Lưu DB thất bại, đang rollback release-stock...`);
       try {
         await axios.post(`${INVENTORY_SERVICE_URL}/inventory/release-stock`, {
@@ -221,6 +224,24 @@ export class OrderController {
         });
       } catch (rollbackError) {
         console.error(`[CRITICAL] Rollback tồn kho thất bại! Cần can thiệp thủ công.`, rollbackError);
+      }
+      if (appliedVoucherCode && savedOrder?.id) {
+        try {
+          await axios.post(
+            `${DISCOUNT_SERVICE_URL}/discounts/vouchers/release`,
+            {
+              code: appliedVoucherCode,
+              userId: userId.toString(),
+              orderId: savedOrder.id,
+            },
+            {
+              headers: {
+                'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+              },
+              timeout: 5000,
+            },
+          );
+        } catch {}
       }
       throw new HttpException('Lỗi hệ thống khi tạo đơn hàng. Đã hoàn lại tồn kho.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
