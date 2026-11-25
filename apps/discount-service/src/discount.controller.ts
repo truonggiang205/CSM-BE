@@ -61,7 +61,19 @@ export class DiscountController {
     if (!isInternal && req?.headers?.['x-user-role'] !== 'ADMIN') {
       throw new ForbiddenException('Endpoint chỉ cho phép gọi nội bộ hoặc ADMIN');
     }
-    return this.discountService.claimVoucher(code, userId, orderId);
+    const result = await this.discountService.claimVoucher(code, userId, orderId);
+
+    // Hỗ trợ mô phỏng timeout trong kiểm thử Saga biên:
+    // Nếu mã voucher chứa TIMEOUT hoặc có header x-simulate-delay-ms, delay 5.5s để kích hoạt timeout >5s phía order-service
+    const delayMs = req?.headers?.['x-simulate-delay-ms']
+      ? parseInt(req.headers['x-simulate-delay-ms'], 10)
+      : (code && code.includes('TIMEOUT') ? 5500 : 0);
+
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    return result;
   }
 
   @Post(['vouchers/release', 'discounts/vouchers/release'])
