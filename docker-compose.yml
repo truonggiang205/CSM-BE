@@ -285,7 +285,7 @@ services:
       notification-service:
         condition: service_healthy
       discount-service:
-        condition: service_started
+        condition: service_healthy
     networks:
       - csm-network
     healthcheck:
