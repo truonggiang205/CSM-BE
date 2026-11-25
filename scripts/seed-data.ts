@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as bcrypt from 'bcryptjs';
 import * as zlib from 'zlib';
 import * as readline from 'readline';
+import * as mysql from 'mysql2/promise';
 import axios from 'axios';
 
 // Entities
@@ -369,48 +370,27 @@ async function handleReset(dataSources: {
     return;
   }
 
-  console.log('\n🧹 ĐANG XOÁ TOÀN BỘ DỮ LIỆU DEMO (CHỈ XÓA DỮ LIỆU DEMO THEO ĐÁNH DẤU)...');
+  console.log('\n🧹 ĐANG XOÁ TOÀN BỘ DỮ LIỆU DEMO VÀ DỌN SẠCH DỮ LIỆU TEST...');
   const summary: Record<string, number> = {};
 
   const { authDs, productDs, inventoryDs, orderDs } = dataSources;
 
-  // 1. Order DB: Tìm và xoá đơn hàng thuộc demo customers
-  const userRepo = authDs.getRepository(User);
-  const demoUsers = await userRepo.find({
-    where: [{ email: 'customer1@csm.vn' }, { email: 'customer2@csm.vn' }],
-  });
-  const demoUserIds = demoUsers.map((u) => u.id);
+  // 1. Order DB: Xoá TOÀN BỘ đơn hàng và chi tiết đơn hàng (để chuẩn bị seed lại 12 đơn sạch)
+  const orderRepo = orderDs.getRepository(Order);
+  const orderItemRepo = orderDs.getRepository(OrderItem);
+  const delItems = await orderItemRepo.createQueryBuilder().delete().execute();
+  const delOrders = await orderRepo.createQueryBuilder().delete().execute();
+  summary['order_items'] = delItems.affected || 0;
+  summary['orders'] = delOrders.affected || 0;
 
-  if (demoUserIds.length > 0) {
-    const orderRepo = orderDs.getRepository(Order);
-    const orderItemRepo = orderDs.getRepository(OrderItem);
-    const demoOrders = await orderRepo.find({
-      where: { user_id: In(demoUserIds) },
-    });
-    const orderIds = demoOrders.map((o) => o.id);
-
-    if (orderIds.length > 0) {
-      const delItems = await orderItemRepo
-        .createQueryBuilder()
-        .delete()
-        .where('order_id IN (:...orderIds)', { orderIds })
-        .execute();
-      const delOrders = await orderRepo.delete({ id: In(orderIds) });
-      summary['order_items'] = delItems.affected || 0;
-      summary['orders'] = delOrders.affected || 0;
-    }
-  }
-
-  // 2. Inventory DB: Xoá giao dịch kho và tồn kho demo
+  // 2. Inventory DB: Xoá giao dịch kho và giải phóng toàn bộ tồn kho đặt trước
   const txRepo = inventoryDs.getRepository(StockTransaction);
   const stockRepo = inventoryDs.getRepository(Stock);
 
-  const delTx = await txRepo
-    .createQueryBuilder()
-    .delete()
-    .where("reference_id LIKE 'seed-demo-%' OR reference_id LIKE 'seed-init-%'")
-    .execute();
+  const delTx = await txRepo.createQueryBuilder().delete().execute();
   summary['stock_transactions'] = delTx.affected || 0;
+
+  await stockRepo.createQueryBuilder().update(Stock).set({ reserved_quantity: 0 }).execute();
 
   // 3. Product DB: Xoá sản phẩm demo và danh mục
   const prodRepo = productDs.getRepository(Product);
@@ -441,18 +421,50 @@ async function handleReset(dataSources: {
     .execute();
   summary['categories'] = delCats.affected || 0;
 
-  // 4. Auth DB: Xoá tài khoản khách demo customer1, customer2, manager.q2 (giữ admin và manager.q1 để test)
+  // 4. Auth DB: Xoá toàn bộ tài khoản thử nghiệm phát sinh (cust_*, momo_*, test_*), chỉ giữ đúng 6 tài khoản seed demo
+  const userRepo = authDs.getRepository(User);
+  const seedEmails = [
+    'admin@csm.vn',
+    'manager.q1@csm.vn',
+    'manager.q2@csm.vn',
+    'customer1@csm.vn',
+    'customer2@csm.vn',
+    'customer@csm.vn',
+  ];
   const delUsers = await userRepo
     .createQueryBuilder()
     .delete()
-    .where("email IN ('customer1@csm.vn', 'customer2@csm.vn', 'manager.q2@csm.vn')")
+    .where('email NOT IN (:...seedEmails)', { seedEmails })
     .execute();
-  summary['users'] = delUsers.affected || 0;
+  summary['extraneous_users'] = delUsers.affected || 0;
+
+  // 5. Discount DB: Xoá toàn bộ voucher thử nghiệm và lịch sử sử dụng voucher
+  try {
+    const rawDiscUrl = process.env.DISCOUNT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_discount';
+    const parsedDisc = new URL(rawDiscUrl);
+    const isSsl = rawDiscUrl.includes('ssl-mode=REQUIRED') || rawDiscUrl.includes('aivencloud.com');
+    const connDisc = await mysql.createConnection({
+      host: parsedDisc.hostname || 'localhost',
+      port: Number(parsedDisc.port) || 3306,
+      user: parsedDisc.username || 'root',
+      password: parsedDisc.password || 'rootpassword',
+      database: parsedDisc.pathname.replace(/^\//, '') || 'csm_discount',
+      ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+    });
+    const [delUsages]: any = await connDisc.query('DELETE FROM `voucher_usages`');
+    const [delVouchers]: any = await connDisc.query('DELETE FROM `vouchers`');
+    summary['voucher_usages'] = delUsages.affectedRows || 0;
+    summary['vouchers'] = delVouchers.affectedRows || 0;
+    await connDisc.end();
+  } catch (discErr: any) {
+    console.warn('  ⚠️ Không thể kết nối csm_discount để reset:', discErr.message);
+  }
 
   console.log('✅ KẾT QUẢ RESET DỮ LIỆU DEMO:');
   for (const [table, count] of Object.entries(summary)) {
-    console.log(`  - ${table}: Đã xoá ${count} bản ghi`);
+    console.log(`  - ${table}: Đã xoá/reset ${count} bản ghi`);
   }
+  console.log('======================================================\n');
   console.log('======================================================\n');
 }
 
