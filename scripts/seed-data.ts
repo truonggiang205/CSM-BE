@@ -473,11 +473,63 @@ async function handleReset(dataSources: {
 // -----------------------------------------------------------------------------
 async function runSeed() {
   const isReset = process.argv.includes('--reset');
+  const forceRemote = process.argv.includes('--force-remote');
 
   const authDbUrl = process.env.AUTH_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_auth';
   const productDbUrl = process.env.PRODUCT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_product';
   const inventoryDbUrl = process.env.INVENTORY_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_inventory';
   const orderDbUrl = process.env.ORDER_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_order';
+  const discountDbUrl = process.env.DISCOUNT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_discount';
+
+  if (isReset) {
+    const SAFE_LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', 'mysql', 'csm-mysql']);
+    const targets = [
+      { name: 'auth', url: authDbUrl },
+      { name: 'product', url: productDbUrl },
+      { name: 'inventory', url: inventoryDbUrl },
+      { name: 'order', url: orderDbUrl },
+      { name: 'discount', url: discountDbUrl },
+    ].map((t) => {
+      const parsed = new URL(t.url);
+      return {
+        name: t.name,
+        host: parsed.hostname || 'localhost',
+        database: parsed.pathname.replace(/^\//, ''),
+      };
+    });
+
+    console.log('\n🎯 MỤC TIÊU CHUẨN BỊ XOÁ (--reset):');
+    for (const t of targets) {
+      console.log(`  - [${t.name}] host=${t.host} | database=${t.database}`);
+    }
+
+    const remoteTargets = targets.filter((t) => !SAFE_LOCAL_HOSTS.has(t.host.toLowerCase()));
+    if (remoteTargets.length > 0) {
+      console.error('\n🛑 TỪ CHỐI THỰC THI --reset TRÊN REMOTE HOST:');
+      for (const rt of remoteTargets) {
+        console.error(`  ❌ [${rt.name}] host="${rt.host}" (database="${rt.database}") không nằm trong danh sách cục bộ/Docker an toàn.`);
+      }
+      if (!forceRemote) {
+        console.error('  👉 Nếu bạn thực sự muốn xoá dữ liệu trên remote host, bắt buộc truyền cờ --force-remote và gõ xác nhận thủ công.');
+        process.exit(1);
+      }
+      if (!process.stdin.isTTY) {
+        console.error('  ❌ Không có TTY để gõ xác nhận thủ công cho --force-remote. Huỷ bỏ.');
+        process.exit(1);
+      }
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const typed: string = await new Promise((resolve) => {
+        rl.question('⚠️ Gõ chính xác "DELETE REMOTE DATA" để xác nhận xoá dữ liệu remote: ', (ans) => {
+          rl.close();
+          resolve(ans.trim());
+        });
+      });
+      if (typed !== 'DELETE REMOTE DATA') {
+        console.error('🛑 Xác nhận không khớp. Huỷ bỏ thao tác --reset.');
+        process.exit(1);
+      }
+    }
+  }
 
   const authDs = new DataSource({
     type: 'mysql',
