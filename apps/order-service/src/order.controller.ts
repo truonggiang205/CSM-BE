@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, HttpException, HttpStatus, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, HttpException, HttpStatus, UseGuards, Req, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import axios from 'axios';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
+import { OrderReview } from './entities/order-review.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
@@ -23,6 +24,9 @@ export class OrderController {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepository: Repository<OrderItem>,
+    @Optional()
+    @InjectRepository(OrderReview)
+    private readonly orderReviewRepository?: Repository<OrderReview>,
   ) {}
 
   @Get('health')
@@ -843,6 +847,66 @@ export class OrderController {
       ],
     });
     return { branchId, count };
+  }
+
+  @Get('reviews/public')
+  async getPublicReviews() {
+    if (!this.orderReviewRepository) return [];
+    return this.orderReviewRepository.find({
+      order: { created_at: 'DESC' },
+      take: 6,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/review')
+  async getOrderReview(@Param('id') id: string) {
+    if (!this.orderReviewRepository) return null;
+    return this.orderReviewRepository.findOne({ where: { order_id: id } });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/review')
+  async createOrderReview(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Body() body: { rating: number; comment: string; customerName?: string },
+  ) {
+    if (!this.orderReviewRepository) {
+      throw new HttpException('Chức năng đánh giá chưa sẵn sàng', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    const order = await this.orderRepository.findOne({ where: { id }, relations: ['items'] });
+    if (!order) {
+      throw new HttpException('Không tìm thấy đơn hàng', HttpStatus.NOT_FOUND);
+    }
+    const userId = req.user?.id || req.user?.sub || req.headers['x-user-id'];
+    if (order.user_id !== String(userId)) {
+      throw new HttpException('Bạn không có quyền đánh giá đơn hàng này', HttpStatus.FORBIDDEN);
+    }
+    if (order.status !== OrderStatus.SHIPPED && order.status !== OrderStatus.PAID) {
+      throw new HttpException('Chỉ có thể đánh giá đơn hàng đã thanh toán hoặc đã giao', HttpStatus.BAD_REQUEST);
+    }
+    const existing = await this.orderReviewRepository.findOne({ where: { order_id: id } });
+    if (existing) {
+      throw new HttpException('Đơn hàng này đã được đánh giá', HttpStatus.CONFLICT);
+    }
+
+    const rating = Math.min(5, Math.max(1, Number(body.rating) || 5));
+    const comment = (body.comment || '').trim();
+    if (!comment) {
+      throw new HttpException('Vui lòng nhập nội dung đánh giá', HttpStatus.BAD_REQUEST);
+    }
+
+    const firstItemName = order.items?.[0]?.product_name_snapshot || 'Đơn hàng CSM';
+    const review = this.orderReviewRepository.create({
+      order_id: id,
+      user_id: String(userId),
+      customer_name: body.customerName?.trim() || req.user?.email?.split('@')[0] || 'Khách hàng CSM',
+      rating,
+      comment,
+      purchased_item: firstItemName,
+    });
+    return this.orderReviewRepository.save(review);
   }
 
   @UseGuards(JwtAuthGuard)
