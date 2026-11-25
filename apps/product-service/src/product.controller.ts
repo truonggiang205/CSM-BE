@@ -9,6 +9,7 @@ import {
   Body,
   Query,
   Req,
+  Optional,
   NotFoundException,
   BadRequestException,
   UseGuards,
@@ -44,8 +45,9 @@ export class ProductController {
     private readonly productRepository: Repository<Product>,
     @InjectRepository(Category)
     private readonly categoryRepository: Repository<Category>,
+    @Optional()
     @InjectRepository(WishlistItem)
-    private readonly wishlistRepository: Repository<WishlistItem>,
+    private readonly wishlistRepository?: Repository<WishlistItem>,
   ) {}
 
   @Get('health')
@@ -148,7 +150,7 @@ export class ProductController {
   @Get('products/wishlist/my')
   async getMyWishlist(@Req() req: any) {
     const userId = req?.headers?.['x-user-id'];
-    if (!userId) return [];
+    if (!userId || !this.wishlistRepository) return [];
     const items = await this.wishlistRepository.find({
       where: { user_id: String(userId) },
       order: { created_at: 'DESC' },
@@ -159,7 +161,7 @@ export class ProductController {
   @Post('products/:id/wishlist')
   async toggleWishlist(@Param('id') id: string, @Req() req: any) {
     const userId = req?.headers?.['x-user-id'];
-    if (!userId) {
+    if (!userId || !this.wishlistRepository) {
       return { wishlisted: false, productId: id };
     }
     const existing = await this.wishlistRepository.findOne({
