@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource } from 'typeorm';
 import { Voucher, DiscountType } from './entities/voucher.entity';
 import { VoucherUsage, UsageStatus } from './entities/voucher-usage.entity';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
@@ -12,6 +12,7 @@ export class DiscountService implements OnModuleInit {
     private readonly voucherRepo: Repository<Voucher>,
     @InjectRepository(VoucherUsage)
     private readonly usageRepo: Repository<VoucherUsage>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async onModuleInit() {
@@ -244,70 +245,140 @@ export class DiscountService implements OnModuleInit {
     };
   }
 
-  // Tăng lượt sử dụng khi chốt đơn thành công và ghi nhật ký người dùng
+  // Tăng lượt sử dụng khi chốt đơn thành công và ghi nhật ký người dùng (Giao dịch an toàn & Chống Race Condition)
   async claimVoucher(code: string, userId?: string, orderId?: string) {
     const normalizedCode = code.trim().toUpperCase();
-    const voucher = await this.voucherRepo.findOne({ where: { code: normalizedCode } });
-    if (!voucher) throw new NotFoundException('Voucher không tồn tại');
 
-    if (voucher.usage_limit && voucher.used_count >= voucher.usage_limit) {
-      throw new BadRequestException('Voucher đã hết số lượt sử dụng');
-    }
+    return await this.dataSource.transaction(async (manager) => {
+      // 1. Kiểm tra tính Idempotent: Nếu orderId này đã claim voucher rồi thì trả về kết quả thành công, không trừ lần 2
+      if (orderId) {
+        const existingUsage = await manager.findOne(VoucherUsage, {
+          where: { order_id: orderId, status: UsageStatus.USED },
+        });
+        if (existingUsage) {
+          const existingVoucher = await manager.findOne(Voucher, { where: { id: existingUsage.voucher_id } });
+          return existingVoucher;
+        }
+      }
 
-    // 1. Tăng lượt dùng toàn hệ thống
-    voucher.used_count += 1;
-    await this.voucherRepo.save(voucher);
+      // 2. Khóa dòng voucher (SELECT FOR UPDATE) để đồng bộ hóa tuyệt đối giữa các request đồng thời
+      const voucher = await manager
+        .createQueryBuilder(Voucher, 'v')
+        .setLock('pessimistic_write')
+        .where('v.code = :code', { code: normalizedCode })
+        .getOne();
 
-    // 2. Ghi nhật ký sử dụng của User cho đơn hàng này
-    if (userId && orderId) {
-      const usage = this.usageRepo.create({
-        voucher_id: voucher.id,
-        user_id: userId,
-        order_id: orderId,
-        status: UsageStatus.USED,
-      });
-      await this.usageRepo.save(usage);
-    }
+      if (!voucher) {
+        throw new NotFoundException('Voucher không tồn tại');
+      }
 
-    return voucher;
+      if (!voucher.is_active) {
+        throw new BadRequestException('Voucher hiện đang bị tạm dừng');
+      }
+
+      const now = new Date();
+      if (now < new Date(voucher.start_date) || now > new Date(voucher.end_date)) {
+        throw new BadRequestException('Voucher đã hết hạn hoặc chưa đến ngày áp dụng');
+      }
+
+      // 3. Kiểm tra tổng lượt dùng toàn hệ thống
+      if (voucher.usage_limit && voucher.used_count >= voucher.usage_limit) {
+        throw new BadRequestException('Voucher đã hết số lượt sử dụng trên hệ thống');
+      }
+
+      // 4. Kiểm tra giới hạn dùng của User dưới khoá giao dịch (chống race condition khi user gửi đồng thời)
+      if (userId && userId.trim() !== '' && userId !== 'anonymous') {
+        const maxPerUser = voucher.max_usage_per_user || 1;
+        const userUsageCount = await manager.count(VoucherUsage, {
+          where: {
+            voucher_id: voucher.id,
+            user_id: userId.trim(),
+            status: UsageStatus.USED,
+          },
+        });
+        if (userUsageCount >= maxPerUser) {
+          throw new BadRequestException('Bạn đã dùng hết số lượt cho phép của voucher này');
+        }
+      }
+
+      // 5. Tăng số lượt dùng nguyên tử
+      voucher.used_count += 1;
+      await manager.save(voucher);
+
+      // 6. Ghi nhận nhật ký sử dụng của User
+      if (userId && orderId) {
+        const usage = manager.create(VoucherUsage, {
+          voucher_id: voucher.id,
+          user_id: userId.trim(),
+          order_id: orderId.trim(),
+          status: UsageStatus.USED,
+        });
+        await manager.save(usage);
+      }
+
+      return voucher;
+    });
   }
 
-  // HOÀN LẠI MÃ CHO NGƯỜI DÙNG KHI HUỶ ĐƠN HOẶC ROLLBACK SAGA
+  // HOÀN LẠI MÃ CHO NGƯỜI DÙNG KHI HUỶ ĐƠN HOẶC ROLLBACK SAGA (IDEMPOTENT)
   async releaseVoucher(code: string, userId?: string, orderId?: string) {
     const normalizedCode = code.trim().toUpperCase();
-    const voucher = await this.voucherRepo.findOne({ where: { code: normalizedCode } });
-    if (!voucher) {
-      return { success: false, message: 'Voucher không tồn tại' };
-    }
 
-    // 1. Giảm tổng số lượt dùng toàn hệ thống
-    if (voucher.used_count > 0) {
-      voucher.used_count -= 1;
-      await this.voucherRepo.save(voucher);
-    }
+    return await this.dataSource.transaction(async (manager) => {
+      // 1. Khoá dòng voucher để cập nhật chính xác
+      const voucher = await manager
+        .createQueryBuilder(Voucher, 'v')
+        .setLock('pessimistic_write')
+        .where('v.code = :code', { code: normalizedCode })
+        .getOne();
 
-    // 2. Chuyển trạng thái lượt dùng của User từ USED sang REFUNDED
-    if (userId && orderId) {
-      const usage = await this.usageRepo.findOne({
-        where: {
-          voucher_id: voucher.id,
-          user_id: userId,
-          order_id: orderId,
-          status: UsageStatus.USED,
-        },
-      });
-
-      if (usage) {
-        usage.status = UsageStatus.REFUNDED;
-        await this.usageRepo.save(usage);
-        console.log(`[DiscountService] Đã hoàn lại lượt dùng mã ${normalizedCode} cho User ${userId} (Đơn #${orderId})`);
+      if (!voucher) {
+        return { success: false, message: 'Voucher không tồn tại' };
       }
-    }
 
-    return {
-      success: true,
-      message: `Đã mở lại mã giảm giá '${normalizedCode}' cho tài khoản thành công.`,
-    };
+      // 2. Kiểm tra tính Idempotent: Chỉ giảm used_count nếu tìm thấy lượt dùng USED thật sự
+      if (userId && orderId) {
+        const usage = await manager.findOne(VoucherUsage, {
+          where: {
+            voucher_id: voucher.id,
+            user_id: userId.trim(),
+            order_id: orderId.trim(),
+            status: UsageStatus.USED,
+          },
+        });
+
+        if (!usage) {
+          return {
+            success: true,
+            message: 'Đơn hàng này chưa dùng hoặc đã được hoàn lại voucher trước đó (Idempotent)',
+          };
+        }
+
+        usage.status = UsageStatus.REFUNDED;
+        await manager.save(usage);
+
+        if (voucher.used_count > 0) {
+          voucher.used_count -= 1;
+          await manager.save(voucher);
+        }
+
+        return {
+          success: true,
+          message: `Đã mở lại mã giảm giá '${normalizedCode}' cho tài khoản thành công.`,
+        };
+      }
+
+      // Fallback nếu không có userId / orderId
+      if (voucher.used_count > 0) {
+        voucher.used_count -= 1;
+        await manager.save(voucher);
+      }
+
+      return {
+        success: true,
+        message: `Đã hoàn lại lượt dùng mã giảm giá '${normalizedCode}'.`,
+      };
+    });
   }
 
   // Admin tạo voucher
