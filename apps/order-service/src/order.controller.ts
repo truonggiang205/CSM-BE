@@ -55,13 +55,16 @@ export class OrderController {
       );
     }
 
-    const activeFlashSaleMap = new Map<string, number>();
+    const activeFlashSaleMap = new Map<string, { salePrice: number; maxPerUser: number }>();
     try {
       const fsRes = await axios.get(`${DISCOUNT_SERVICE_URL}/flash-sales/current`, { timeout: 3000 });
       if (fsRes.data && fsRes.data.status === 'ACTIVE' && Array.isArray(fsRes.data.items)) {
         for (const fsItem of fsRes.data.items) {
           if (fsItem.product_id && Number(fsItem.sale_price) > 0) {
-            activeFlashSaleMap.set(String(fsItem.product_id), Number(fsItem.sale_price));
+            activeFlashSaleMap.set(String(fsItem.product_id), {
+              salePrice: Number(fsItem.sale_price),
+              maxPerUser: Number(fsItem.max_per_user) || 2,
+            });
           }
         }
       }
@@ -69,30 +72,65 @@ export class OrderController {
 
     const verifiedRegularItems = await Promise.all(
       (items || []).map(async (item) => {
+        let product: any;
         try {
           const pRes = await axios.get(`${PRODUCT_SERVICE_URL}/products/${item.productId}`);
-          const product = pRes.data;
+          product = pRes.data;
           if (!product || !product.id) {
             throw new Error('Not found');
           }
-          const basePrice = Number(product.base_price) || 0;
-          const flashSalePrice = activeFlashSaleMap.get(product.id.toString());
-          const price = flashSalePrice !== undefined && flashSalePrice > 0 && flashSalePrice < basePrice ? flashSalePrice : basePrice;
-          return {
-            productId: product.id.toString(),
-            productName: product.name,
-            price: price,
-            quantity: Number(item.quantity) || 1,
-            itemType: 'PRODUCT' as const,
-            comboId: null as string | null,
-            comboItemsSnapshot: null as Array<{ productId: string; productName: string; quantity: number }> | null,
-          };
         } catch {
           throw new HttpException(
             `Sản phẩm ID ${item.productId} không tồn tại trong hệ thống`,
             HttpStatus.NOT_FOUND,
           );
         }
+
+        const basePrice = Number(product.base_price) || 0;
+        const flashSaleInfo = activeFlashSaleMap.get(product.id.toString());
+        const qty = Number(item.quantity) || 1;
+        let price = basePrice;
+
+        if (flashSaleInfo && flashSaleInfo.salePrice > 0 && flashSaleInfo.salePrice < basePrice) {
+          if (userId && userId !== 'anonymous') {
+            let boughtToday = 0;
+            try {
+              const startOfDay = new Date();
+              startOfDay.setHours(0, 0, 0, 0);
+              const rawSum = await this.orderItemRepository
+                .createQueryBuilder('oi')
+                .innerJoin('oi.order', 'o')
+                .select('COALESCE(SUM(oi.quantity), 0)', 'total')
+                .where('o.user_id = :userId', { userId: userId.toString() })
+                .andWhere('o.status != :cancelled', { cancelled: OrderStatus.CANCELLED })
+                .andWhere('o.created_at >= :startOfDay', { startOfDay })
+                .andWhere('oi.product_id = :productId', { productId: product.id.toString() })
+                .andWhere("(oi.item_type IS NULL OR oi.item_type = 'PRODUCT')")
+                .getRawOne();
+              boughtToday = Number(rawSum?.total) || 0;
+            } catch {
+              boughtToday = 0;
+            }
+
+            if (boughtToday + qty > flashSaleInfo.maxPerUser) {
+              throw new HttpException(
+                `Mỗi khách hàng chỉ được mua tối đa ${flashSaleInfo.maxPerUser} suất Giờ Vàng hôm nay cho "${product.name}" (đã mua ${boughtToday}).`,
+                HttpStatus.BAD_REQUEST,
+              );
+            }
+          }
+          price = flashSaleInfo.salePrice;
+        }
+
+        return {
+          productId: product.id.toString(),
+          productName: product.name,
+          price: price,
+          quantity: qty,
+          itemType: 'PRODUCT' as const,
+          comboId: null as string | null,
+          comboItemsSnapshot: null as Array<{ productId: string; productName: string; quantity: number }> | null,
+        };
       }),
     );
 
