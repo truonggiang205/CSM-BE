@@ -1,6 +1,16 @@
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+function requireEnv(name) {
+  if (!process.env[name]) {
+    console.error(`❌ Thiếu biến môi trường bắt buộc: ${name}`);
+    process.exit(1);
+  }
+  return process.env[name];
+}
 
 function uuid() {
   return crypto.randomUUID();
@@ -10,10 +20,10 @@ async function seed() {
   console.log('--- STARTING COMPREHENSIVE SEEDING (87 RECORDS PER MODULE) ---');
 
   // Connections
-  const authConn = await mysql.createConnection('mysql://root:12345@localhost:3306/csm_auth');
-  const prodConn = await mysql.createConnection('mysql://root:12345@localhost:3306/csm_product');
-  const invConn = await mysql.createConnection('mysql://root:12345@localhost:3306/csm_inventory');
-  const orderConn = await mysql.createConnection('mysql://root:12345@localhost:3306/csm_order');
+  const authConn = await mysql.createConnection(requireEnv('AUTH_DB_URL'));
+  const prodConn = await mysql.createConnection(requireEnv('PRODUCT_DB_URL'));
+  const invConn = await mysql.createConnection(requireEnv('INVENTORY_DB_URL'));
+  const orderConn = await mysql.createConnection(requireEnv('ORDER_DB_URL'));
 
   const branches = ['br-01', 'br-02', 'br-03'];
 
