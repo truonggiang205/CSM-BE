@@ -14,6 +14,8 @@
     "start:all": "concurrently \"npm run start:gateway\" \"npm run start:auth\" \"npm run start:product\" \"npm run start:inventory\" \"npm run start:order\" \"npm run start:payment\" \"npm run start:notification\"",
     "seed": "npm --prefix apps/auth-service run seed && ts-node scripts/seed-data.ts",
     "seed:demo": "ts-node scripts/seed-data.ts",
+    "env:init": "node scripts/env-init.js",
+    "env:check": "node scripts/env-check.js",
     "test": "jest --runInBand"
   },
   "keywords": [
