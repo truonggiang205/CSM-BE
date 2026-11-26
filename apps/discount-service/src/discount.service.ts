@@ -96,8 +96,12 @@ export class DiscountService implements OnModuleInit {
 
       const campaignCount = await this.campaignRepo.count();
       if (campaignCount === 0) {
+        const todayStr = this.toVnDateStr();
         const campaign = this.campaignRepo.create({
           name: 'Giờ Vàng Giảm Giá CSM - Hôm Nay',
+          apply_date: todayStr,
+          start_date: todayStr,
+          end_date: todayStr,
           start_time: '06:00:00',
           end_time: '23:59:59',
           is_active: true,
@@ -645,15 +649,68 @@ export class DiscountService implements OnModuleInit {
     return new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
   }
 
+  private normalizeTimeStr(timeStr: string): string {
+    const trimmed = String(timeStr || '00:00:00').trim();
+    return trimmed.length === 5 ? `${trimmed}:00` : trimmed;
+  }
+
+  private getCampaignDateTimeBounds(
+    c: {
+      start_date?: string | null;
+      end_date?: string | null;
+      apply_date?: string | null;
+      start_time: string;
+      end_time: string;
+    },
+    fallbackDateStr?: string,
+  ) {
+    const todayStr = fallbackDateStr || this.toVnDateStr();
+    const startDate =
+      this.normalizeApplyDate(c.start_date) ||
+      this.normalizeApplyDate(c.apply_date) ||
+      todayStr;
+    const endDate =
+      this.normalizeApplyDate(c.end_date) ||
+      this.normalizeApplyDate(c.apply_date) ||
+      startDate;
+    const startTime = this.normalizeTimeStr(c.start_time);
+    const endTime = this.normalizeTimeStr(c.end_time);
+    const startDateTime = `${startDate}T${startTime}+07:00`;
+    const endDateTime = `${endDate}T${endTime}+07:00`;
+    const startMs = new Date(startDateTime).getTime();
+    const endMs = new Date(endDateTime).getTime();
+    return {
+      startDate,
+      endDate,
+      startTime,
+      endTime,
+      startDateTime,
+      endDateTime,
+      startMs,
+      endMs,
+    };
+  }
+
   private async validateNoOverlappingCampaign(
     startTime: string,
     endTime: string,
-    applyDate?: string | null,
+    startDate?: string | null,
+    endDate?: string | null,
     excludeCampaignId?: string,
   ) {
-    const s1 = startTime.length === 5 ? `${startTime}:00` : startTime;
-    const e1 = endTime.length === 5 ? `${endTime}:00` : endTime;
-    const targetDate = this.normalizeApplyDate(applyDate);
+    const b1 = this.getCampaignDateTimeBounds({
+      start_date: startDate,
+      end_date: endDate,
+      apply_date: startDate,
+      start_time: startTime,
+      end_time: endTime,
+    });
+
+    if (b1.endMs <= b1.startMs) {
+      throw new BadRequestException(
+        'Thời điểm kết thúc (ngày & giờ kết thúc) phải lớn hơn thời điểm bắt đầu.',
+      );
+    }
 
     const allCampaigns = await this.campaignRepo.find({
       where: { is_active: true },
@@ -662,38 +719,54 @@ export class DiscountService implements OnModuleInit {
     for (const c of allCampaigns) {
       if (excludeCampaignId && c.id === excludeCampaignId) continue;
 
-      const existingDate = this.normalizeApplyDate(c.apply_date);
-      const dateOverlap =
-        !targetDate || !existingDate || targetDate === existingDate;
+      const b2 = this.getCampaignDateTimeBounds(c);
+      const isOverlap = b1.startMs < b2.endMs && b2.startMs < b1.endMs;
 
-      if (!dateOverlap) continue;
-
-      const s2 = c.start_time.length === 5 ? `${c.start_time}:00` : c.start_time;
-      const e2 = c.end_time.length === 5 ? `${c.end_time}:00` : c.end_time;
-
-      const timeOverlap = s1 < e2 && s2 < e1;
-
-      if (timeOverlap) {
+      if (isOverlap) {
         throw new ConflictException(
-          `Khung giờ ${s1.slice(0, 5)} - ${e1.slice(0, 5)} bị trùng với ca Giờ Vàng '${c.name}' (${s2.slice(0, 5)} - ${e2.slice(0, 5)}). Mỗi khung giờ chỉ được phép tồn tại duy nhất 1 ca Giờ Vàng.`,
+          `Khoảng thời gian ${b1.startDate} ${b1.startTime.slice(0, 5)} - ${b1.endDate} ${b1.endTime.slice(0, 5)} bị trùng với ca Giờ Vàng '${c.name}' (${b2.startDate} ${b2.startTime.slice(0, 5)} - ${b2.endDate} ${b2.endTime.slice(0, 5)}).`,
         );
       }
     }
   }
 
   async createFlashSale(dto: CreateFlashSaleDto) {
-    const normalizedDate = this.normalizeApplyDate(dto.apply_date);
+    const todayStr = this.toVnDateStr();
+    const startDate =
+      this.normalizeApplyDate(dto.start_date) ||
+      this.normalizeApplyDate(dto.apply_date) ||
+      todayStr;
+    const endDate =
+      this.normalizeApplyDate(dto.end_date) ||
+      this.normalizeApplyDate(dto.apply_date) ||
+      startDate;
+
+    const bounds = this.getCampaignDateTimeBounds({
+      start_date: startDate,
+      end_date: endDate,
+      start_time: dto.start_time,
+      end_time: dto.end_time,
+    });
+    if (bounds.endMs <= bounds.startMs) {
+      throw new BadRequestException(
+        'Thời điểm kết thúc (ngày & giờ kết thúc) phải lớn hơn thời điểm bắt đầu.',
+      );
+    }
+
     if (dto.is_active !== false) {
       await this.validateNoOverlappingCampaign(
         dto.start_time,
         dto.end_time,
-        normalizedDate,
+        startDate,
+        endDate,
       );
     }
 
     const campaign = this.campaignRepo.create({
       name: dto.name,
-      apply_date: normalizedDate as any,
+      apply_date: startDate,
+      start_date: startDate,
+      end_date: endDate,
       start_time: dto.start_time,
       end_time: dto.end_time,
       is_active: dto.is_active !== undefined ? dto.is_active : true,
@@ -741,23 +814,50 @@ export class DiscountService implements OnModuleInit {
 
     const targetStart = dto.start_time !== undefined ? dto.start_time : campaign.start_time;
     const targetEnd = dto.end_time !== undefined ? dto.end_time : campaign.end_time;
-    const targetDate =
-      dto.apply_date !== undefined
-        ? this.normalizeApplyDate(dto.apply_date)
-        : this.normalizeApplyDate(campaign.apply_date);
+    const targetStartDate =
+      dto.start_date !== undefined
+        ? this.normalizeApplyDate(dto.start_date)
+        : dto.apply_date !== undefined
+          ? this.normalizeApplyDate(dto.apply_date)
+          : this.normalizeApplyDate(campaign.start_date) || this.normalizeApplyDate(campaign.apply_date);
+    const targetEndDate =
+      dto.end_date !== undefined
+        ? this.normalizeApplyDate(dto.end_date)
+        : dto.apply_date !== undefined
+          ? this.normalizeApplyDate(dto.apply_date)
+          : this.normalizeApplyDate(campaign.end_date) || targetStartDate;
     const targetActive = dto.is_active !== undefined ? dto.is_active : campaign.is_active;
+
+    const bounds = this.getCampaignDateTimeBounds({
+      start_date: targetStartDate,
+      end_date: targetEndDate,
+      start_time: targetStart,
+      end_time: targetEnd,
+    });
+    if (bounds.endMs <= bounds.startMs) {
+      throw new BadRequestException(
+        'Thời điểm kết thúc (ngày & giờ kết thúc) phải lớn hơn thời điểm bắt đầu.',
+      );
+    }
 
     if (targetActive) {
       await this.validateNoOverlappingCampaign(
         targetStart,
         targetEnd,
-        targetDate,
+        targetStartDate,
+        targetEndDate,
         id,
       );
     }
 
     if (dto.name !== undefined) campaign.name = dto.name;
-    if (dto.apply_date !== undefined) campaign.apply_date = targetDate as any;
+    if (dto.start_date !== undefined || dto.apply_date !== undefined) {
+      campaign.start_date = targetStartDate;
+      campaign.apply_date = targetStartDate;
+    }
+    if (dto.end_date !== undefined || dto.apply_date !== undefined) {
+      campaign.end_date = targetEndDate;
+    }
     if (dto.start_time !== undefined) campaign.start_time = dto.start_time;
     if (dto.end_time !== undefined) campaign.end_time = dto.end_time;
     if (dto.is_active !== undefined) campaign.is_active = dto.is_active;
@@ -794,7 +894,8 @@ export class DiscountService implements OnModuleInit {
       await this.validateNoOverlappingCampaign(
         campaign.start_time,
         campaign.end_time,
-        campaign.apply_date,
+        campaign.start_date || campaign.apply_date,
+        campaign.end_date || campaign.apply_date,
         id,
       );
     }
@@ -821,73 +922,50 @@ export class DiscountService implements OnModuleInit {
       return { status: 'NONE', campaign: null, items: [] };
     }
 
-    const vnDate = new Date(Date.now() + 7 * 60 * 60 * 1000);
-    const currentHours = String(vnDate.getUTCHours()).padStart(2, '0');
-    const currentMinutes = String(vnDate.getUTCMinutes()).padStart(2, '0');
-    const currentSeconds = String(vnDate.getUTCSeconds()).padStart(2, '0');
-    const currentTimeStr = `${currentHours}:${currentMinutes}:${currentSeconds}`;
-    const todayStr = vnDate.toISOString().split('T')[0];
+    const nowMs = Date.now();
+    const todayStr = this.toVnDateStr(new Date(nowMs));
 
-    // Tự động reset sold_count sang 0 khi qua ngày mới cho các ca "Lặp lại mỗi ngày" (apply_date = null)
-    for (const c of campaigns) {
-      if (!this.normalizeApplyDate(c.apply_date) && c.items && c.items.length > 0) {
-        const lastUpdatedVn = c.updated_at ? this.toVnDateStr(new Date(c.updated_at)) : todayStr;
-        if (lastUpdatedVn < todayStr && c.items.some((i) => Number(i.sold_count) > 0)) {
-          for (const item of c.items) {
-            item.sold_count = 0;
-          }
-          await this.itemRepo.save(c.items);
-          await this.campaignRepo.update(c.id, { updated_at: new Date() });
-        }
-      }
-    }
+    const campaignsWithBounds = campaigns
+      .map((c) => ({
+        campaign: c,
+        bounds: this.getCampaignDateTimeBounds(c, todayStr),
+      }))
+      .sort((a, b) => a.bounds.startMs - b.bounds.startMs);
 
-    const validCampaigns = campaigns
-      .filter((c) => {
-        const d = this.normalizeApplyDate(c.apply_date);
-        if (!d) return true;
-        return d === todayStr;
-      })
-      .sort((a, b) => {
-        const aSpecific = this.normalizeApplyDate(a.apply_date) ? 0 : 1;
-        const bSpecific = this.normalizeApplyDate(b.apply_date) ? 0 : 1;
-        if (aSpecific !== bSpecific) return aSpecific - bSpecific;
-        return a.start_time.localeCompare(b.start_time);
-      });
+    const activeEntry = campaignsWithBounds.find(
+      ({ bounds }) => nowMs >= bounds.startMs && nowMs <= bounds.endMs,
+    );
 
-    if (validCampaigns.length === 0) {
-      return { status: 'NONE', campaign: null, items: [] };
-    }
-
-    const activeCampaign = validCampaigns.find((c) => {
-      const s = c.start_time.length === 5 ? `${c.start_time}:00` : c.start_time;
-      const e = c.end_time.length === 5 ? `${c.end_time}:00` : c.end_time;
-      return currentTimeStr >= s && currentTimeStr <= e;
-    });
-
-    if (activeCampaign) {
+    if (activeEntry) {
+      const { campaign: activeCampaign, bounds } = activeEntry;
       return {
         status: 'ACTIVE',
         campaign: activeCampaign,
         startTime: activeCampaign.start_time,
         endTime: activeCampaign.end_time,
         targetTime: activeCampaign.end_time,
+        startDateTime: bounds.startDateTime,
+        endDateTime: bounds.endDateTime,
+        targetDateTime: bounds.endDateTime,
         items: activeCampaign.items || [],
       };
     }
 
-    const upcomingCampaign = validCampaigns.find((c) => {
-      const s = c.start_time.length === 5 ? `${c.start_time}:00` : c.start_time;
-      return currentTimeStr < s;
-    });
+    const upcomingEntry = campaignsWithBounds.find(
+      ({ bounds }) => nowMs < bounds.startMs,
+    );
 
-    if (upcomingCampaign) {
+    if (upcomingEntry) {
+      const { campaign: upcomingCampaign, bounds } = upcomingEntry;
       return {
         status: 'UPCOMING',
         campaign: upcomingCampaign,
         startTime: upcomingCampaign.start_time,
         endTime: upcomingCampaign.end_time,
         targetTime: upcomingCampaign.start_time,
+        startDateTime: bounds.startDateTime,
+        endDateTime: bounds.endDateTime,
+        targetDateTime: bounds.startDateTime,
         items: upcomingCampaign.items || [],
       };
     }

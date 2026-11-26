@@ -1165,6 +1165,8 @@ async function runSeed() {
       const campaign = campaignRepo.create({
         name: 'Giờ Vàng Giảm Giá CSM - Hôm Nay',
         apply_date: todayStr,
+        start_date: todayStr,
+        end_date: todayStr,
         start_time: '06:00:00',
         end_time: '23:59:59',
         is_active: true,

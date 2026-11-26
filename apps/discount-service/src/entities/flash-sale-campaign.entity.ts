@@ -17,7 +17,13 @@ export class FlashSaleCampaign {
   name: string;
 
   @Column({ type: 'date', nullable: true })
-  apply_date: string;
+  apply_date: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  start_date: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  end_date: string | null;
 
   @Column({ type: 'time' })
   start_time: string;
