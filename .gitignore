@@ -12,6 +12,7 @@ build/
 .env.local
 .env.*.local
 !.env.example
+!*.example
 .env.cloud
 
 # Test & Build Artifacts
