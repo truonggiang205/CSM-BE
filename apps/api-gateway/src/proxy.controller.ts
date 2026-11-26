@@ -19,6 +19,10 @@ const SERVICE_MAP: Record<string, string> = {
   storefront: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
   vouchers: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
   discounts: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  'flash-sales': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  'today-deals': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  combos: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  'spin-wheel': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
 };
 
 function isPublicEndpoint(method: string, pathUrl: string): boolean {
@@ -44,7 +48,15 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
     return true;
   }
   if (m === 'GET') {
-    if (normPath === '/vouchers' || normPath === '/discounts' || normPath === '/discounts/vouchers') {
+    if (
+      normPath === '/vouchers' ||
+      normPath === '/discounts' ||
+      normPath === '/discounts/vouchers' ||
+      normPath.startsWith('/flash-sales') ||
+      normPath.startsWith('/today-deals') ||
+      normPath.startsWith('/combos') ||
+      normPath.startsWith('/spin-wheel')
+    ) {
       return true;
     }
   }
@@ -60,7 +72,8 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
       normPath.startsWith('/products') ||
       normPath.startsWith('/categories') ||
       normPath.startsWith('/branches') ||
-      normPath.startsWith('/inventory')
+      normPath.startsWith('/inventory') ||
+      normPath.startsWith('/orders/reviews/public')
     ) {
       return true;
     }
@@ -75,8 +88,8 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
     return true;
   }
 
-  // 3. Payment simulation endpoint (hỗ trợ trình duyệt redirect mô phỏng thanh toán)
-  if (normPath.startsWith('/payments/simulate-success')) {
+  // 3. Payment simulation & newsletter public endpoints
+  if (normPath.startsWith('/payments/simulate-success') || normPath.startsWith('/notifications/newsletter/subscribe')) {
     return true;
   }
 

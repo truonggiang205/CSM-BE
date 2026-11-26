@@ -24,6 +24,12 @@ export class Product {
   @Column({ nullable: true })
   image_url: string;
 
+  @Column({ type: 'boolean', default: false })
+  is_featured?: boolean;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  curator_note?: string | null;
+
   @ManyToOne(() => Category, (category) => category.products)
   @JoinColumn({ name: 'category_id' })
   category: Category;

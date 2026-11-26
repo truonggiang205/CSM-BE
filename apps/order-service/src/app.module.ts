@@ -5,6 +5,7 @@ import { createEnvValidator } from '@csm/config';
 import { OrderController } from './order.controller';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
+import { OrderReview } from './entities/order-review.entity';
 import { JwtModule } from '@nestjs/jwt';
 
 @Module({
@@ -23,7 +24,7 @@ import { JwtModule } from '@nestjs/jwt';
       useFactory: (configService: ConfigService) => ({
         type: 'mysql',
         url: configService.getOrThrow<string>('ORDER_DB_URL'),
-        entities: [Order, OrderItem],
+        entities: [Order, OrderItem, OrderReview],
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
           configService.get<string>('DB_SYNC') === 'true',
@@ -36,7 +37,7 @@ import { JwtModule } from '@nestjs/jwt';
 
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Order, OrderItem]),
+    TypeOrmModule.forFeature([Order, OrderItem, OrderReview]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
