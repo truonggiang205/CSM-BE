@@ -34,12 +34,12 @@ export class OrderController {
 
   @Post()
   async createOrder(@Req() req: any, @Body() dto: CreateOrderDto) {
-    const { branchId, items, shippingAddress, paymentMethod, voucherCode } = dto;
+    const { branchId, items = [], combos = [], shippingAddress, paymentMethod, voucherCode } = dto;
     const userId = req.user?.id || req.headers['x-user-id'] || 'anonymous';
     const orderId = randomUUID();
 
-    if (!items || items.length === 0) {
-      throw new HttpException('Đơn hàng phải có ít nhất 1 sản phẩm', HttpStatus.BAD_REQUEST);
+    if ((!items || items.length === 0) && (!combos || combos.length === 0)) {
+      throw new HttpException('Đơn hàng phải có ít nhất 1 sản phẩm hoặc combo', HttpStatus.BAD_REQUEST);
     }
 
     // --- BƯỚC 0.1: XÁC THỰC CHI NHÁNH TỒN TẠI (INVENTORY SERVICE) ---
@@ -67,8 +67,8 @@ export class OrderController {
       }
     } catch {}
 
-    const verifiedItems = await Promise.all(
-      items.map(async (item) => {
+    const verifiedRegularItems = await Promise.all(
+      (items || []).map(async (item) => {
         try {
           const pRes = await axios.get(`${PRODUCT_SERVICE_URL}/products/${item.productId}`);
           const product = pRes.data;
@@ -83,6 +83,9 @@ export class OrderController {
             productName: product.name,
             price: price,
             quantity: Number(item.quantity) || 1,
+            itemType: 'PRODUCT' as const,
+            comboId: null as string | null,
+            comboItemsSnapshot: null as Array<{ productId: string; productName: string; quantity: number }> | null,
           };
         } catch {
           throw new HttpException(
@@ -93,13 +96,97 @@ export class OrderController {
       }),
     );
 
+    const verifiedCombos = await Promise.all(
+      (combos || []).map(async (comboReq) => {
+        let comboData: any;
+        try {
+          const cRes = await axios.get(`${DISCOUNT_SERVICE_URL}/combos/${comboReq.comboId}`);
+          comboData = cRes.data;
+        } catch {
+          throw new HttpException(
+            `Combo ID ${comboReq.comboId} không tồn tại trong hệ thống`,
+            HttpStatus.NOT_FOUND,
+          );
+        }
+
+        if (!comboData || !comboData.is_active) {
+          throw new HttpException(
+            `Combo "${comboData?.name || comboReq.comboId}" hiện đang tạm ngưng`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        const now = new Date();
+        if (comboData.start_date && new Date(comboData.start_date) > now) {
+          throw new HttpException(
+            `Combo "${comboData.name}" chưa đến thời gian mở bán`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        if (comboData.end_date && new Date(comboData.end_date) < now) {
+          throw new HttpException(
+            `Combo "${comboData.name}" đã hết hạn áp dụng`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        const comboQty = Math.max(1, Number(comboReq.quantity) || 1);
+        if (
+          comboData.max_quantity !== null &&
+          comboData.max_quantity !== undefined &&
+          Number(comboData.sold_count || 0) + comboQty > Number(comboData.max_quantity)
+        ) {
+          throw new HttpException(
+            `Combo "${comboData.name}" không đủ suất ưu đãi còn lại`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        const comboItemsSnapshot = Array.isArray(comboData.items)
+          ? comboData.items.map((ci: any) => ({
+              productId: String(ci.product_id),
+              productName: ci.product_name || ci.product_id,
+              quantity: Math.max(1, Number(ci.quantity) || 1),
+            }))
+          : [];
+
+        return {
+          productId: String(comboData.id),
+          productName: comboData.name,
+          price: Number(comboData.combo_price) || 0,
+          quantity: comboQty,
+          itemType: 'COMBO' as const,
+          comboId: String(comboData.id),
+          comboItemsSnapshot,
+        };
+      }),
+    );
+
+    const verifiedItems = [...verifiedRegularItems, ...verifiedCombos];
+
+    // Tổng hợp số lượng từng sản phẩm thực tế cần trừ kho (từ sản phẩm lẻ + các món trong combo)
+    const inventoryQtyMap = new Map<string, number>();
+    for (const item of verifiedRegularItems) {
+      inventoryQtyMap.set(item.productId, (inventoryQtyMap.get(item.productId) || 0) + item.quantity);
+    }
+    for (const combo of verifiedCombos) {
+      for (const ci of combo.comboItemsSnapshot || []) {
+        const addQty = ci.quantity * combo.quantity;
+        inventoryQtyMap.set(ci.productId, (inventoryQtyMap.get(ci.productId) || 0) + addQty);
+      }
+    }
+    const aggregatedInventoryItems = Array.from(inventoryQtyMap.entries()).map(([productId, quantity]) => ({
+      productId,
+      quantity,
+    }));
+
     // --- BƯỚC 1: SAGA - GIỮ HÀNG TỒN KHO TẠM THỜI (RESERVE STOCK) ---
     try {
       console.log(`[OrderService] Gọi Inventory Service (${INVENTORY_SERVICE_URL}) để giữ kho (reserve-stock)...`);
       const reserveRes = await axios.post(`${INVENTORY_SERVICE_URL}/inventory/reserve-stock`, {
         branchId: branchId.toString(),
         referenceId: orderId,
-        items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
+        items: aggregatedInventoryItems,
       });
 
       if (!reserveRes.data.success) {
@@ -142,7 +229,7 @@ export class OrderController {
             {
               branchId: branchId.toString(),
               referenceId: orderId,
-              items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
+              items: aggregatedInventoryItems,
             },
             { timeout: 5000 },
           );
@@ -182,6 +269,9 @@ export class OrderController {
         product_name_snapshot: item.productName,
         price_snapshot: item.price,
         quantity: item.quantity,
+        item_type: item.itemType,
+        combo_id: item.comboId,
+        combo_items_snapshot: item.comboItemsSnapshot,
       }));
 
       savedOrder = await this.orderRepository.save(order);
@@ -192,7 +282,7 @@ export class OrderController {
           await axios.post(`${INVENTORY_SERVICE_URL}/inventory/confirm-deduct`, {
             branchId: branchId.toString(),
             referenceId: savedOrder.id,
-            items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
+            items: aggregatedInventoryItems,
           });
         } catch (confirmErr: any) {
           console.error('[OrderService] Confirm deduct kho thất bại:', confirmErr?.message);
@@ -269,9 +359,17 @@ export class OrderController {
         }
       }
 
-      axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/record-purchase`, {
-        items: verifiedItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-      }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua flash sale thất bại:', e?.message));
+      if (verifiedRegularItems.length > 0) {
+        axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/record-purchase`, {
+          items: verifiedRegularItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua flash sale thất bại:', e?.message));
+      }
+
+      if (verifiedCombos.length > 0) {
+        axios.post(`${DISCOUNT_SERVICE_URL}/combos/record-purchase`, {
+          combos: verifiedCombos.map((c) => ({ comboId: c.comboId, quantity: c.quantity })),
+        }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua combo thất bại:', e?.message));
+      }
     } catch (dbError) {
       if (dbError instanceof HttpException) {
         throw dbError;
@@ -282,7 +380,7 @@ export class OrderController {
         await axios.post(`${INVENTORY_SERVICE_URL}/inventory/release-stock`, {
           branchId: branchId.toString(),
           referenceId: orderId,
-          items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
+          items: aggregatedInventoryItems,
         });
       } catch (rollbackError) {
         console.error(`[CRITICAL] Rollback tồn kho thất bại! Cần can thiệp thủ công.`, rollbackError);
@@ -434,6 +532,23 @@ export class OrderController {
       );
     }
 
+    const aggregateInventoryItems = (orderItems: OrderItem[]) => {
+      const qtyMap = new Map<string, number>();
+      for (const item of orderItems || []) {
+        if (item.item_type === 'COMBO' && Array.isArray(item.combo_items_snapshot)) {
+          for (const ci of item.combo_items_snapshot) {
+            const addQty = (Number(ci.quantity) || 1) * (Number(item.quantity) || 1);
+            qtyMap.set(ci.productId, (qtyMap.get(ci.productId) || 0) + addQty);
+          }
+        } else {
+          qtyMap.set(item.product_id, (qtyMap.get(item.product_id) || 0) + (Number(item.quantity) || 1));
+        }
+      }
+      return Array.from(qtyMap.entries()).map(([productId, quantity]) => ({ productId, quantity }));
+    };
+
+    const inventoryItemsForOrder = aggregateInventoryItems(order.items);
+
     // 3. Thực thi Saga tương ứng với điều kiện nghiêm ngặt
     // Chỉ confirm-deduct khi chuyển từ PENDING sang CONFIRMED hoặc PAID (chỉ làm 1 lần duy nhất)
     if (oldStatus === OrderStatus.PENDING && (newStatus === OrderStatus.CONFIRMED || newStatus === OrderStatus.PAID)) {
@@ -442,10 +557,7 @@ export class OrderController {
         await axios.post(`${INVENTORY_SERVICE_URL}/inventory/confirm-deduct`, {
           branchId: order.branch_id,
           referenceId: order.id,
-          items: order.items.map(item => ({
-            productId: item.product_id,
-            quantity: item.quantity,
-          })),
+          items: inventoryItemsForOrder,
         });
       } catch (err: any) {
         throw new HttpException(
@@ -462,10 +574,7 @@ export class OrderController {
         await axios.post(`${INVENTORY_SERVICE_URL}/inventory/release-stock`, {
           branchId: order.branch_id,
           referenceId: order.id,
-          items: order.items.map(item => ({
-            productId: item.product_id,
-            quantity: item.quantity,
-          })),
+          items: inventoryItemsForOrder,
         });
       } catch (err: any) {
         console.error(`[OrderService] Giải phóng kho thất bại khi huỷ đơn ${order.id}:`, err);
@@ -496,12 +605,25 @@ export class OrderController {
         }
       }
 
-      axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/rollback-purchase`, {
-        items: (order.items || []).map((item) => ({
-          productId: item.product_id,
-          quantity: item.quantity,
-        })),
-      }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua flash sale thất bại:', e?.message));
+      const regularOrderItems = (order.items || []).filter((item) => item.item_type !== 'COMBO');
+      if (regularOrderItems.length > 0) {
+        axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/rollback-purchase`, {
+          items: regularOrderItems.map((item) => ({
+            productId: item.product_id,
+            quantity: item.quantity,
+          })),
+        }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua flash sale thất bại:', e?.message));
+      }
+
+      const comboOrderItems = (order.items || []).filter((item) => item.item_type === 'COMBO' && item.combo_id);
+      if (comboOrderItems.length > 0) {
+        axios.post(`${DISCOUNT_SERVICE_URL}/combos/rollback-purchase`, {
+          combos: comboOrderItems.map((item) => ({
+            comboId: item.combo_id,
+            quantity: item.quantity,
+          })),
+        }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua combo thất bại:', e?.message));
+      }
     }
 
     order.status = newStatus;

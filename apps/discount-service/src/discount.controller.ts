@@ -4,6 +4,8 @@ import { ValidateVoucherDto } from './dto/validate-voucher.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateFlashSaleDto } from './dto/create-flash-sale.dto';
 import { UpdateFlashSaleDto } from './dto/update-flash-sale.dto';
+import { CreateComboDto } from './dto/create-combo.dto';
+import { UpdateComboDto } from './dto/update-combo.dto';
 
 const getInternalSecret = () => process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token';
 
@@ -159,5 +161,50 @@ export class DiscountController {
   @Post(['flash-sales/rollback-purchase', 'discounts/flash-sales/rollback-purchase'])
   rollbackFlashSalePurchases(@Body('items') items: Array<{ productId: string; quantity: number }>) {
     return this.discountService.rollbackFlashSalePurchases(items || []);
+  }
+
+  // ==================== COMBO & BUNDLE DEALS ====================
+
+  @Get(['combos', 'discounts/combos'])
+  getCombos(@Query('all') all?: string) {
+    if (all === 'true') {
+      return this.discountService.getAllCombos();
+    }
+    return this.discountService.getPublicCombos();
+  }
+
+  @Get(['combos/:id', 'discounts/combos/:id'])
+  getComboById(@Param('id') id: string) {
+    return this.discountService.getComboById(id);
+  }
+
+  @Post(['combos', 'discounts/combos'])
+  createCombo(@Body() dto: CreateComboDto) {
+    return this.discountService.createCombo(dto);
+  }
+
+  @Patch(['combos/:id', 'discounts/combos/:id'])
+  updateCombo(@Param('id') id: string, @Body() dto: UpdateComboDto) {
+    return this.discountService.updateCombo(id, dto);
+  }
+
+  @Patch(['combos/:id/toggle', 'discounts/combos/:id/toggle'])
+  toggleCombo(@Param('id') id: string) {
+    return this.discountService.toggleCombo(id);
+  }
+
+  @Delete(['combos/:id', 'discounts/combos/:id'])
+  deleteCombo(@Param('id') id: string) {
+    return this.discountService.deleteCombo(id);
+  }
+
+  @Post(['combos/record-purchase', 'discounts/combos/record-purchase'])
+  recordComboPurchases(@Body('combos') combos: Array<{ comboId: string; quantity: number }>) {
+    return this.discountService.recordComboPurchases(combos || []);
+  }
+
+  @Post(['combos/rollback-purchase', 'discounts/combos/rollback-purchase'])
+  rollbackComboPurchases(@Body('combos') combos: Array<{ comboId: string; quantity: number }>) {
+    return this.discountService.rollbackComboPurchases(combos || []);
   }
 }

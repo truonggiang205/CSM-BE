@@ -7,6 +7,8 @@ import { Voucher } from './entities/voucher.entity';
 import { VoucherUsage } from './entities/voucher-usage.entity';
 import { FlashSaleCampaign } from './entities/flash-sale-campaign.entity';
 import { FlashSaleItem } from './entities/flash-sale-item.entity';
+import { Combo } from './entities/combo.entity';
+import { ComboItem } from './entities/combo-item.entity';
 
 @Module({
   imports: [
@@ -16,7 +18,7 @@ import { FlashSaleItem } from './entities/flash-sale-item.entity';
       useFactory: (config: ConfigService) => ({
         type: 'mysql',
         url: config.get<string>('DISCOUNT_DB_URL') || 'mysql://root:rootpassword@localhost:3306/csm_discount',
-        entities: [Voucher, VoucherUsage, FlashSaleCampaign, FlashSaleItem],
+        entities: [Voucher, VoucherUsage, FlashSaleCampaign, FlashSaleItem, Combo, ComboItem],
         synchronize:
           config.get<string>('NODE_ENV') === 'development' ||
           config.get<string>('DB_SYNC') === 'true',
@@ -28,7 +30,7 @@ import { FlashSaleItem } from './entities/flash-sale-item.entity';
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Voucher, VoucherUsage, FlashSaleCampaign, FlashSaleItem]),
+    TypeOrmModule.forFeature([Voucher, VoucherUsage, FlashSaleCampaign, FlashSaleItem, Combo, ComboItem]),
   ],
   controllers: [DiscountController],
   providers: [DiscountService],
