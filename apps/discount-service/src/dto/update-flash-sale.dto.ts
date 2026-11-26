@@ -19,6 +19,14 @@ export class UpdateFlashSaleDto {
 
   @IsString()
   @IsOptional()
+  start_date?: string;
+
+  @IsString()
+  @IsOptional()
+  end_date?: string;
+
+  @IsString()
+  @IsOptional()
   start_time?: string;
 
   @IsString()

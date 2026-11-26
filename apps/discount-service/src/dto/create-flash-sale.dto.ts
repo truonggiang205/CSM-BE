@@ -53,6 +53,14 @@ export class CreateFlashSaleDto {
   apply_date?: string;
 
   @IsString()
+  @IsOptional()
+  start_date?: string;
+
+  @IsString()
+  @IsOptional()
+  end_date?: string;
+
+  @IsString()
   @IsNotEmpty()
   start_time: string;
 
