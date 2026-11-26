@@ -14,6 +14,10 @@ import { FlashSaleCampaign } from './entities/flash-sale-campaign.entity';
 import { FlashSaleItem } from './entities/flash-sale-item.entity';
 import { CreateFlashSaleDto } from './dto/create-flash-sale.dto';
 import { UpdateFlashSaleDto } from './dto/update-flash-sale.dto';
+import { Combo } from './entities/combo.entity';
+import { ComboItem } from './entities/combo-item.entity';
+import { CreateComboDto } from './dto/create-combo.dto';
+import { UpdateComboDto } from './dto/update-combo.dto';
 
 @Injectable()
 export class DiscountService implements OnModuleInit {
@@ -27,6 +31,10 @@ export class DiscountService implements OnModuleInit {
     private readonly campaignRepo: Repository<FlashSaleCampaign>,
     @InjectRepository(FlashSaleItem)
     private readonly itemRepo: Repository<FlashSaleItem>,
+    @InjectRepository(Combo)
+    private readonly comboRepo: Repository<Combo>,
+    @InjectRepository(ComboItem)
+    private readonly comboItemRepo: Repository<ComboItem>,
   ) {}
 
   async onModuleInit() {
@@ -133,6 +141,97 @@ export class DiscountService implements OnModuleInit {
           ],
         });
         await this.campaignRepo.save(campaign);
+      }
+
+      const comboCount = await this.comboRepo.count();
+      if (comboCount === 0) {
+        const now = new Date();
+        const nextYear = new Date();
+        nextYear.setFullYear(now.getFullYear() + 1);
+
+        await this.comboRepo.save([
+          this.comboRepo.create({
+            name: 'Combo Bữa Sáng Năng Lượng',
+            description: 'Bánh mì giòn nóng kèm cà phê sữa đá thơm béo và snack giòn rụm',
+            original_price: 55000,
+            combo_price: 42000,
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
+            items: [
+              this.comboItemRepo.create({
+                product_id: 'p2',
+                product_name: 'Bánh mì kẹp thịt nguội',
+                original_price: 25000,
+                quantity: 1,
+              }),
+              this.comboItemRepo.create({
+                product_id: 'p5',
+                product_name: 'Cà phê sữa đá pha sẵn',
+                original_price: 18000,
+                quantity: 1,
+              }),
+              this.comboItemRepo.create({
+                product_id: 'p3',
+                product_name: "Snack khoai tây O'Star",
+                original_price: 12000,
+                quantity: 1,
+              }),
+            ],
+          }),
+          this.comboRepo.create({
+            name: 'Combo Bữa Trưa Tiện Lợi',
+            description: 'Mì ly Modern chua cay nức mũi, nước khoáng thanh khiết và snack giòn',
+            original_price: 31000,
+            combo_price: 24000,
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
+            items: [
+              this.comboItemRepo.create({
+                product_id: 'p4',
+                product_name: 'Mì ly Modern chua cay',
+                original_price: 9000,
+                quantity: 1,
+              }),
+              this.comboItemRepo.create({
+                product_id: 'p1',
+                product_name: 'Nước khoáng Lavie 500ml',
+                original_price: 10000,
+                quantity: 1,
+              }),
+              this.comboItemRepo.create({
+                product_id: 'p3',
+                product_name: "Snack khoai tây O'Star",
+                original_price: 12000,
+                quantity: 1,
+              }),
+            ],
+          }),
+          this.comboRepo.create({
+            name: 'Combo Cú Đêm No Nê',
+            description: '2 Mì ly Modern chua cay kèm cà phê sữa đá tỉnh táo xuyên đêm',
+            original_price: 36000,
+            combo_price: 27000,
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
+            items: [
+              this.comboItemRepo.create({
+                product_id: 'p4',
+                product_name: 'Mì ly Modern chua cay',
+                original_price: 9000,
+                quantity: 2,
+              }),
+              this.comboItemRepo.create({
+                product_id: 'p5',
+                product_name: 'Cà phê sữa đá pha sẵn',
+                original_price: 18000,
+                quantity: 1,
+              }),
+            ],
+          }),
+        ]);
       }
     } catch {}
   }
@@ -736,6 +835,190 @@ export class DiscountService implements OnModuleInit {
       }
     }
 
+    return { success: true, rolledBack: rolledBackCount };
+  }
+
+  // ==================== COMBO & BUNDLE DEALS ====================
+
+  async getAllCombos(): Promise<Combo[]> {
+    return this.comboRepo.find({
+      relations: ['items'],
+      order: { created_at: 'DESC' },
+    });
+  }
+
+  async getPublicCombos(): Promise<Combo[]> {
+    const now = new Date();
+    const combos = await this.comboRepo.find({
+      where: { is_active: true },
+      relations: ['items'],
+      order: { created_at: 'DESC' },
+    });
+
+    return combos.filter((combo) => {
+      if (combo.start_date && new Date(combo.start_date) > now) return false;
+      if (combo.end_date && new Date(combo.end_date) < now) return false;
+      if (
+        combo.max_quantity !== null &&
+        combo.max_quantity !== undefined &&
+        combo.sold_count >= combo.max_quantity
+      ) {
+        return false;
+      }
+      return Array.isArray(combo.items) && combo.items.length > 0;
+    });
+  }
+
+  async getComboById(id: string): Promise<Combo> {
+    const combo = await this.comboRepo.findOne({
+      where: { id },
+      relations: ['items'],
+    });
+    if (!combo) {
+      throw new NotFoundException(`Không tìm thấy Combo với ID ${id}`);
+    }
+    return combo;
+  }
+
+  async createCombo(dto: CreateComboDto): Promise<Combo> {
+    if (!dto.items || dto.items.length === 0) {
+      throw new BadRequestException('Combo phải có ít nhất 1 sản phẩm thành phần');
+    }
+
+    const totalItemQty = dto.items.reduce((sum, i) => sum + Number(i.quantity || 1), 0);
+    if (totalItemQty < 2) {
+      throw new BadRequestException('Combo phải có tổng số lượng từ 2 sản phẩm trở lên');
+    }
+
+    if (dto.start_date && dto.end_date && new Date(dto.end_date) <= new Date(dto.start_date)) {
+      throw new BadRequestException('Ngày kết thúc phải sau ngày bắt đầu');
+    }
+
+    const calculatedOriginal = dto.items.reduce(
+      (sum, item) => sum + (Number(item.original_price) || 0) * (Number(item.quantity) || 1),
+      0,
+    );
+    const originalPrice =
+      dto.original_price !== undefined && dto.original_price > 0
+        ? Number(dto.original_price)
+        : calculatedOriginal;
+
+    if (originalPrice > 0 && Number(dto.combo_price) > originalPrice) {
+      throw new BadRequestException('Giá bán Combo không được lớn hơn tổng giá gốc');
+    }
+
+    const combo = this.comboRepo.create({
+      name: dto.name.trim(),
+      description: dto.description?.trim() || null,
+      combo_price: Number(dto.combo_price),
+      original_price: originalPrice,
+      image_url: dto.image_url?.trim() || null,
+      start_date: dto.start_date ? new Date(dto.start_date) : null,
+      end_date: dto.end_date ? new Date(dto.end_date) : null,
+      max_quantity: dto.max_quantity ?? null,
+      is_active: dto.is_active !== undefined ? dto.is_active : true,
+      items: dto.items.map((item) =>
+        this.comboItemRepo.create({
+          product_id: item.product_id,
+          product_name: item.product_name || null,
+          product_image: item.product_image || null,
+          original_price: Number(item.original_price) || 0,
+          quantity: Number(item.quantity) || 1,
+        }),
+      ),
+    });
+
+    return this.comboRepo.save(combo);
+  }
+
+  async updateCombo(id: string, dto: UpdateComboDto): Promise<Combo> {
+    const combo = await this.getComboById(id);
+
+    if (dto.name !== undefined) combo.name = dto.name.trim();
+    if (dto.description !== undefined) combo.description = dto.description?.trim() || null;
+    if (dto.image_url !== undefined) combo.image_url = dto.image_url?.trim() || null;
+    if (dto.start_date !== undefined) {
+      combo.start_date = dto.start_date ? new Date(dto.start_date) : null;
+    }
+    if (dto.end_date !== undefined) {
+      combo.end_date = dto.end_date ? new Date(dto.end_date) : null;
+    }
+    if (combo.start_date && combo.end_date && combo.end_date <= combo.start_date) {
+      throw new BadRequestException('Ngày kết thúc phải sau ngày bắt đầu');
+    }
+    if (dto.max_quantity !== undefined) combo.max_quantity = dto.max_quantity ?? null;
+    if (dto.is_active !== undefined) combo.is_active = dto.is_active;
+
+    if (dto.items !== undefined) {
+      await this.comboItemRepo.delete({ combo_id: combo.id });
+      combo.items = dto.items.map((item) =>
+        this.comboItemRepo.create({
+          combo_id: combo.id,
+          product_id: item.product_id,
+          product_name: item.product_name || null,
+          product_image: item.product_image || null,
+          original_price: Number(item.original_price) || 0,
+          quantity: Number(item.quantity) || 1,
+        }),
+      );
+      const calculatedOriginal = dto.items.reduce(
+        (sum, item) => sum + (Number(item.original_price) || 0) * (Number(item.quantity) || 1),
+        0,
+      );
+      combo.original_price =
+        dto.original_price !== undefined && dto.original_price > 0
+          ? Number(dto.original_price)
+          : calculatedOriginal;
+    } else if (dto.original_price !== undefined) {
+      combo.original_price = Number(dto.original_price);
+    }
+
+    if (dto.combo_price !== undefined) {
+      combo.combo_price = Number(dto.combo_price);
+    }
+
+    if (Number(combo.original_price) > 0 && Number(combo.combo_price) > Number(combo.original_price)) {
+      throw new BadRequestException('Giá bán Combo không được lớn hơn tổng giá gốc');
+    }
+
+    return this.comboRepo.save(combo);
+  }
+
+  async toggleCombo(id: string): Promise<Combo> {
+    const combo = await this.getComboById(id);
+    combo.is_active = !combo.is_active;
+    return this.comboRepo.save(combo);
+  }
+
+  async deleteCombo(id: string): Promise<{ success: boolean; message: string }> {
+    const combo = await this.getComboById(id);
+    await this.comboRepo.remove(combo);
+    return { success: true, message: 'Đã xóa Combo thành công' };
+  }
+
+  async recordComboPurchases(combos: Array<{ comboId: string; quantity: number }>) {
+    let updatedCount = 0;
+    for (const entry of combos) {
+      const combo = await this.comboRepo.findOne({ where: { id: entry.comboId } });
+      if (!combo) continue;
+      const qty = Math.max(1, Number(entry.quantity) || 1);
+      combo.sold_count = (Number(combo.sold_count) || 0) + qty;
+      await this.comboRepo.save(combo);
+      updatedCount++;
+    }
+    return { success: true, updated: updatedCount };
+  }
+
+  async rollbackComboPurchases(combos: Array<{ comboId: string; quantity: number }>) {
+    let rolledBackCount = 0;
+    for (const entry of combos) {
+      const combo = await this.comboRepo.findOne({ where: { id: entry.comboId } });
+      if (!combo) continue;
+      const qty = Math.max(1, Number(entry.quantity) || 1);
+      combo.sold_count = Math.max(0, (Number(combo.sold_count) || 0) - qty);
+      await this.comboRepo.save(combo);
+      rolledBackCount++;
+    }
     return { success: true, rolledBack: rolledBackCount };
   }
 }
