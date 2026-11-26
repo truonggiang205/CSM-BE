@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource } from 'typeorm';
+import axios from 'axios';
 import { Voucher, DiscountType } from './entities/voucher.entity';
 import { VoucherUsage, UsageStatus } from './entities/voucher-usage.entity';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
@@ -150,136 +151,244 @@ export class DiscountService implements OnModuleInit {
         await this.campaignRepo.save(campaign);
       }
 
-      const comboCount = await this.comboRepo.count();
-      if (comboCount === 0) {
-        const now = new Date();
-        const nextYear = new Date();
-        nextYear.setFullYear(now.getFullYear() + 1);
-
-        await this.comboRepo.save([
-          this.comboRepo.create({
-            name: 'Combo Bữa Sáng Năng Lượng',
-            description: 'Bánh mì giòn nóng kèm cà phê sữa đá thơm béo và snack giòn rụm',
-            original_price: 55000,
-            combo_price: 42000,
-            start_date: now,
-            end_date: nextYear,
-            is_active: true,
-            items: [
-              this.comboItemRepo.create({
-                product_id: 'p2',
-                product_name: 'Bánh mì kẹp thịt nguội',
-                original_price: 25000,
-                quantity: 1,
-              }),
-              this.comboItemRepo.create({
-                product_id: 'p5',
-                product_name: 'Cà phê sữa đá pha sẵn',
-                original_price: 18000,
-                quantity: 1,
-              }),
-              this.comboItemRepo.create({
-                product_id: 'p3',
-                product_name: "Snack khoai tây O'Star",
-                original_price: 12000,
-                quantity: 1,
-              }),
-            ],
-          }),
-          this.comboRepo.create({
-            name: 'Combo Bữa Trưa Tiện Lợi',
-            description: 'Mì ly Modern chua cay nức mũi, nước khoáng thanh khiết và snack giòn',
-            original_price: 31000,
-            combo_price: 24000,
-            start_date: now,
-            end_date: nextYear,
-            is_active: true,
-            items: [
-              this.comboItemRepo.create({
-                product_id: 'p4',
-                product_name: 'Mì ly Modern chua cay',
-                original_price: 9000,
-                quantity: 1,
-              }),
-              this.comboItemRepo.create({
-                product_id: 'p1',
-                product_name: 'Nước khoáng Lavie 500ml',
-                original_price: 10000,
-                quantity: 1,
-              }),
-              this.comboItemRepo.create({
-                product_id: 'p3',
-                product_name: "Snack khoai tây O'Star",
-                original_price: 12000,
-                quantity: 1,
-              }),
-            ],
-          }),
-          this.comboRepo.create({
-            name: 'Combo Cú Đêm No Nê',
-            description: '2 Mì ly Modern chua cay kèm cà phê sữa đá tỉnh táo xuyên đêm',
-            original_price: 36000,
-            combo_price: 27000,
-            start_date: now,
-            end_date: nextYear,
-            is_active: true,
-            items: [
-              this.comboItemRepo.create({
-                product_id: 'p4',
-                product_name: 'Mì ly Modern chua cay',
-                original_price: 9000,
-                quantity: 2,
-              }),
-              this.comboItemRepo.create({
-                product_id: 'p5',
-                product_name: 'Cà phê sữa đá pha sẵn',
-                original_price: 18000,
-                quantity: 1,
-              }),
-            ],
-          }),
-        ]);
-      }
-
-      const giftCount = await this.giftRepo.count();
-      if (giftCount === 0) {
-        const now = new Date();
-        const nextYear = new Date();
-        nextYear.setFullYear(now.getFullYear() + 1);
-
-        await this.giftRepo.save([
-          this.giftRepo.create({
-            name: 'Mua 2 Cà phê sữa đá tặng 1 Bánh mì',
-            description: 'Tặng ngay 1 Bánh mì kẹp thịt nguội khi mua từ 2 Cà phê sữa đá pha sẵn',
-            rule_type: 'BUY_X_GET_Y',
-            buy_product_id: 'p5',
-            buy_product_name: 'Cà phê sữa đá pha sẵn',
-            buy_quantity: 2,
-            gift_product_id: 'p2',
-            gift_product_name: 'Bánh mì kẹp thịt nguội',
-            gift_quantity: 1,
-            max_gifts_per_order: 1,
-            start_date: now,
-            end_date: nextYear,
-            is_active: true,
-          }),
-          this.giftRepo.create({
-            name: 'Đơn từ 100.000đ tặng Nước khoáng',
-            description: 'Tặng miễn phí 1 Nước khoáng Lavie 500ml cho đơn hàng từ 100.000đ',
-            rule_type: 'MIN_ORDER_GIFT',
-            min_order_amount: 100000,
-            buy_quantity: 1,
-            gift_product_id: 'p1',
-            gift_product_name: 'Nước khoáng Lavie 500ml',
-            gift_quantity: 1,
-            max_gifts_per_order: 1,
-            start_date: now,
-            end_date: nextYear,
-            is_active: true,
-          }),
-        ]);
-      }
+      await this.seedAndSyncCombosAndGifts();
     } catch {}
+  }
+
+  private async fetchRealProducts(): Promise<
+    Array<{ id: string; name: string; base_price: number; image_url?: string }>
+  > {
+    try {
+      const baseUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
+      const res = await axios.get(`${baseUrl}/products`, {
+        params: { page: 1, limit: 100 },
+        timeout: 3000,
+      });
+      const raw = res.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.items)
+          ? raw.items
+          : Array.isArray(raw?.data)
+            ? raw.data
+            : [];
+      return list
+        .filter((p: any) => p && p.id)
+        .map((p: any) => ({
+          id: String(p.id),
+          name: String(p.name || 'Sản phẩm'),
+          base_price: Number(p.base_price) || 0,
+          image_url: p.image_url || undefined,
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  private pickProductByKeyword(
+    products: Array<{ id: string; name: string; base_price: number; image_url?: string }>,
+    keywords: string[],
+    fallbackIdx: number,
+  ) {
+    for (const kw of keywords) {
+      const found = products.find((p) => p.name.toLowerCase().includes(kw));
+      if (found) return found;
+    }
+    return products[fallbackIdx % products.length];
+  }
+
+  private async seedAndSyncCombosAndGifts() {
+    const realProducts = await this.fetchRealProducts();
+    if (realProducts.length < 2) return;
+
+    const pWater = this.pickProductByKeyword(realProducts, ['nước khoáng', 'lavie', 'nước'], 0);
+    const pBread = this.pickProductByKeyword(realProducts, ['bánh mì', 'sandwich', 'bánh'], 1);
+    const pSnack = this.pickProductByKeyword(realProducts, ['snack', 'khoai tây', 'bắp'], 2);
+    const pNoodle = this.pickProductByKeyword(realProducts, ['mì ly', 'mì', 'xúc xích'], 3);
+    const pCoffee = this.pickProductByKeyword(realProducts, ['cà phê', 'trà sữa', 'trà'], 4);
+
+    const legacyMap: Record<string, typeof pWater> = {
+      p1: pWater,
+      p2: pBread,
+      p3: pSnack,
+      p4: pNoodle,
+      p5: pCoffee,
+    };
+
+    const comboCount = await this.comboRepo.count();
+    if (comboCount === 0) {
+      const now = new Date();
+      const nextYear = new Date();
+      nextYear.setFullYear(now.getFullYear() + 1);
+
+      const orig1 = pBread.base_price + pCoffee.base_price + pSnack.base_price;
+      const orig2 = pNoodle.base_price + pWater.base_price + pSnack.base_price;
+      const orig3 = pNoodle.base_price * 2 + pCoffee.base_price;
+
+      await this.comboRepo.save([
+        this.comboRepo.create({
+          name: 'Combo Bữa Sáng Năng Lượng',
+          description: `${pBread.name} kèm ${pCoffee.name} và ${pSnack.name}`,
+          original_price: orig1,
+          combo_price: Math.max(1000, Math.round((orig1 * 0.78) / 1000) * 1000),
+          start_date: now,
+          end_date: nextYear,
+          is_active: true,
+          items: [
+            this.comboItemRepo.create({
+              product_id: pBread.id,
+              product_name: pBread.name,
+              product_image: pBread.image_url || null,
+              original_price: pBread.base_price,
+              quantity: 1,
+            }),
+            this.comboItemRepo.create({
+              product_id: pCoffee.id,
+              product_name: pCoffee.name,
+              product_image: pCoffee.image_url || null,
+              original_price: pCoffee.base_price,
+              quantity: 1,
+            }),
+            this.comboItemRepo.create({
+              product_id: pSnack.id,
+              product_name: pSnack.name,
+              product_image: pSnack.image_url || null,
+              original_price: pSnack.base_price,
+              quantity: 1,
+            }),
+          ],
+        }),
+        this.comboRepo.create({
+          name: 'Combo Bữa Trưa Tiện Lợi',
+          description: `${pNoodle.name}, ${pWater.name} và ${pSnack.name}`,
+          original_price: orig2,
+          combo_price: Math.max(1000, Math.round((orig2 * 0.78) / 1000) * 1000),
+          start_date: now,
+          end_date: nextYear,
+          is_active: true,
+          items: [
+            this.comboItemRepo.create({
+              product_id: pNoodle.id,
+              product_name: pNoodle.name,
+              product_image: pNoodle.image_url || null,
+              original_price: pNoodle.base_price,
+              quantity: 1,
+            }),
+            this.comboItemRepo.create({
+              product_id: pWater.id,
+              product_name: pWater.name,
+              product_image: pWater.image_url || null,
+              original_price: pWater.base_price,
+              quantity: 1,
+            }),
+            this.comboItemRepo.create({
+              product_id: pSnack.id,
+              product_name: pSnack.name,
+              product_image: pSnack.image_url || null,
+              original_price: pSnack.base_price,
+              quantity: 1,
+            }),
+          ],
+        }),
+        this.comboRepo.create({
+          name: 'Combo Cú Đêm No Nê',
+          description: `2 ${pNoodle.name} kèm ${pCoffee.name} tỉnh táo xuyên đêm`,
+          original_price: orig3,
+          combo_price: Math.max(1000, Math.round((orig3 * 0.75) / 1000) * 1000),
+          start_date: now,
+          end_date: nextYear,
+          is_active: true,
+          items: [
+            this.comboItemRepo.create({
+              product_id: pNoodle.id,
+              product_name: pNoodle.name,
+              product_image: pNoodle.image_url || null,
+              original_price: pNoodle.base_price,
+              quantity: 2,
+            }),
+            this.comboItemRepo.create({
+              product_id: pCoffee.id,
+              product_name: pCoffee.name,
+              product_image: pCoffee.image_url || null,
+              original_price: pCoffee.base_price,
+              quantity: 1,
+            }),
+          ],
+        }),
+      ]);
+    } else {
+      // Tự động sửa các combo_items cũ đang dùng ID giả p1..p5 sang UUID thật
+      const allComboItems = await this.comboItemRepo.find();
+      for (const ci of allComboItems) {
+        const mapped = legacyMap[ci.product_id];
+        if (mapped) {
+          ci.product_id = mapped.id;
+          ci.product_name = mapped.name;
+          ci.product_image = mapped.image_url || ci.product_image || null;
+          ci.original_price = mapped.base_price;
+          await this.comboItemRepo.save(ci);
+        }
+      }
+    }
+
+    const giftCount = await this.giftRepo.count();
+    if (giftCount === 0) {
+      const now = new Date();
+      const nextYear = new Date();
+      nextYear.setFullYear(now.getFullYear() + 1);
+
+      await this.giftRepo.save([
+        this.giftRepo.create({
+          name: `Mua 2 ${pCoffee.name} tặng 1 ${pBread.name}`,
+          description: `Tặng ngay 1 ${pBread.name} khi mua từ 2 ${pCoffee.name}`,
+          rule_type: 'BUY_X_GET_Y',
+          buy_product_id: pCoffee.id,
+          buy_product_name: pCoffee.name,
+          buy_quantity: 2,
+          gift_product_id: pBread.id,
+          gift_product_name: pBread.name,
+          gift_quantity: 1,
+          max_gifts_per_order: 1,
+          start_date: now,
+          end_date: nextYear,
+          is_active: true,
+        }),
+        this.giftRepo.create({
+          name: `Đơn từ 100.000đ tặng ${pWater.name}`,
+          description: `Tặng miễn phí 1 ${pWater.name} cho đơn hàng từ 100.000đ`,
+          rule_type: 'MIN_ORDER_GIFT',
+          min_order_amount: 100000,
+          buy_quantity: 1,
+          gift_product_id: pWater.id,
+          gift_product_name: pWater.name,
+          gift_quantity: 1,
+          max_gifts_per_order: 1,
+          start_date: now,
+          end_date: nextYear,
+          is_active: true,
+        }),
+      ]);
+    } else {
+      const allGifts = await this.giftRepo.find();
+      for (const g of allGifts) {
+        let changed = false;
+        if (g.buy_product_id && legacyMap[g.buy_product_id]) {
+          const m = legacyMap[g.buy_product_id];
+          g.buy_product_id = m.id;
+          g.buy_product_name = m.name;
+          changed = true;
+        }
+        if (g.gift_product_id && legacyMap[g.gift_product_id]) {
+          const m = legacyMap[g.gift_product_id];
+          g.gift_product_id = m.id;
+          g.gift_product_name = m.name;
+          changed = true;
+        }
+        if (changed) {
+          await this.giftRepo.save(g);
+        }
+      }
+    }
   }
 
   async getPublicVouchers(userId?: string) {
@@ -886,20 +995,42 @@ export class DiscountService implements OnModuleInit {
 
   // ==================== COMBO & BUNDLE DEALS ====================
 
+  private hasLegacyProductIds(combos: Combo[]): boolean {
+    return combos.some((c) =>
+      (c.items || []).some((i) => /^p[1-5]$/.test(String(i.product_id)))
+    );
+  }
+
   async getAllCombos(): Promise<Combo[]> {
-    return this.comboRepo.find({
+    let combos = await this.comboRepo.find({
       relations: ['items'],
       order: { created_at: 'DESC' },
     });
+    if (combos.length === 0 || this.hasLegacyProductIds(combos)) {
+      await this.seedAndSyncCombosAndGifts();
+      combos = await this.comboRepo.find({
+        relations: ['items'],
+        order: { created_at: 'DESC' },
+      });
+    }
+    return combos;
   }
 
   async getPublicCombos(): Promise<Combo[]> {
     const now = new Date();
-    const combos = await this.comboRepo.find({
+    let combos = await this.comboRepo.find({
       where: { is_active: true },
       relations: ['items'],
       order: { created_at: 'DESC' },
     });
+    if (combos.length === 0 || this.hasLegacyProductIds(combos)) {
+      await this.seedAndSyncCombosAndGifts();
+      combos = await this.comboRepo.find({
+        where: { is_active: true },
+        relations: ['items'],
+        order: { created_at: 'DESC' },
+      });
+    }
 
     return combos.filter((combo) => {
       if (combo.start_date && new Date(combo.start_date) > now) return false;
