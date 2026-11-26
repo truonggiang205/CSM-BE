@@ -87,7 +87,7 @@ docker compose ps
    - `ENABLE_SWAGGER`: chỉ bật `true` ở local dev/staging; tắt `false` trên production.
    - `PAYMENT_SIMULATION`: chỉ bật `true` ở môi trường demo/test; tắt `false` trên production.
    - `ENABLE_TEST_DELAY`: chỉ bật `true` khi chạy test Saga timeout 5s.
-   - `SEED_PASSWORD`, `TEST_API_URL`, `TEST_CLEANUP`, `TEST_*_DB_URL`: chỉ dùng cho seed/test.
+   - `SEED_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_MANAGER_PASSWORD`, `SEED_CUSTOMER_PASSWORD`, `TEST_API_URL`, `TEST_CLEANUP`, `TEST_*_DB_URL`: chỉ dùng cho seed/test.
 
 ### 3.2. Cách xoay vòng (Rotate) Secret
 1. Sinh chuỗi ngẫu nhiên mới (>= 32 ký tự, ví dụ: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
@@ -116,12 +116,13 @@ docker compose ps
 Nạp tài khoản người dùng mẫu, chi nhánh cửa hàng, danh mục sản phẩm và tồn kho ban đầu:
 
 ```bash
-# Cách 1: Chạy trực tiếp từ môi trường host
+# Chạy từ máy host (trong thư mục CSM-BE, sau khi MySQL đã chạy bằng docker compose)
 npm run seed
-
-# Cách 2: Chạy trực tiếp bên trong container api-gateway
-docker compose exec api-gateway npm run seed
 ```
+
+> Seed đọc `.env` ở thư mục gốc CSM-BE, vì vậy các `*_DB_URL` phải trỏ tới `localhost:3306` (MySQL của Docker Compose đã mở cổng này ra host). Container `api-gateway` không chứa thư mục `scripts/` và không có `.env`, nên **không** chạy seed bên trong container.
+>
+> **Mật khẩu tài khoản demo:** mỗi vai trò dùng `SEED_ADMIN_PASSWORD` / `SEED_MANAGER_PASSWORD` / `SEED_CUSTOMER_PASSWORD`; nếu thiếu biến nào thì vai trò đó dùng `SEED_PASSWORD` (do `npm run env:init` sinh ngẫu nhiên). `.env.example` đặt sẵn ba biến theo bảng dưới. Đổi mật khẩu xong thì chạy lại `npm run seed`: seed là idempotent, chỉ cập nhật lại mật khẩu, vai trò và chi nhánh của các tài khoản demo.
 
 ### Các tài khoản mặc định sau khi seed:
 | Email đăng nhập | Mật khẩu | Vai trò (Role) | Phân công chi nhánh |

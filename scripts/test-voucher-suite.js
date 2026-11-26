@@ -31,7 +31,7 @@ async function run() {
   try {
     const adminLogin = await axios.post(`${BASE_URL}/auth/login`, {
       email: 'admin@csm.vn',
-      password: SEED_PASSWORD,
+      password: process.env.SEED_ADMIN_PASSWORD || SEED_PASSWORD,
     });
     adminToken = adminLogin.data.accessToken;
     console.log('✅ 0.1 Đăng nhập ADMIN thành công');
