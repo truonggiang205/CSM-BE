@@ -205,54 +205,12 @@ export class OrderController {
       }),
     );
 
-    const verifiedGiftItems: Array<{
-      productId: string;
-      productName: string;
-      price: number;
-      quantity: number;
-      itemType: 'PRODUCT';
-      comboId: null;
-      comboItemsSnapshot: null;
-    }> = [];
-    try {
-      const prelimSubtotal = [...verifiedRegularItems, ...verifiedCombos].reduce(
-        (sum, i) => sum + i.price * i.quantity,
-        0,
-      );
-      const giftRes = await axios.post(
-        `${DISCOUNT_SERVICE_URL}/gift-promotions/evaluate`,
-        {
-          items: verifiedRegularItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-          subtotal: prelimSubtotal,
-        },
-        { timeout: 3000 },
-      );
-      if (Array.isArray(giftRes.data)) {
-        for (const gift of giftRes.data) {
-          if (gift.productId && Number(gift.quantity) > 0) {
-            verifiedGiftItems.push({
-              productId: String(gift.productId),
-              productName: `🎁 [Tặng kèm] ${gift.productName || gift.productId}`,
-              price: 0,
-              quantity: Number(gift.quantity),
-              itemType: 'PRODUCT',
-              comboId: null,
-              comboItemsSnapshot: null,
-            });
-          }
-        }
-      }
-    } catch {}
+    const verifiedItems = [...verifiedRegularItems, ...verifiedCombos];
 
-    const verifiedItems = [...verifiedRegularItems, ...verifiedCombos, ...verifiedGiftItems];
-
-    // Tổng hợp số lượng từng sản phẩm thực tế cần trừ kho (từ sản phẩm lẻ + các món trong combo + quà tặng)
+    // Tổng hợp số lượng từng sản phẩm thực tế cần trừ kho (từ sản phẩm lẻ + các món trong combo)
     const inventoryQtyMap = new Map<string, number>();
     for (const item of verifiedRegularItems) {
       inventoryQtyMap.set(item.productId, (inventoryQtyMap.get(item.productId) || 0) + item.quantity);
-    }
-    for (const gift of verifiedGiftItems) {
-      inventoryQtyMap.set(gift.productId, (inventoryQtyMap.get(gift.productId) || 0) + gift.quantity);
     }
     for (const combo of verifiedCombos) {
       for (const ci of combo.comboItemsSnapshot || []) {
