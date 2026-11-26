@@ -58,6 +58,10 @@ npm run env:check
 ```bash
 docker compose up -d --build
 ```
+> **Lưu ý khi build nhiều service trên máy yếu / Windows:** Để tránh Docker build song song quá tải CPU/RAM, đặt giới hạn tuần tự trước khi chạy `docker compose build` / `up`:
+> - **PowerShell:** `$env:COMPOSE_PARALLEL_LIMIT=1`
+> - **CMD:** `set COMPOSE_PARALLEL_LIMIT=1`
+>
 > **Tối ưu Docker Build:** Các Dockerfile đã được tối ưu hoá thứ tự COPY file manifests (`package*.json` gốc và của từng workspace) cùng cờ cache mount `RUN --mount=type=cache,target=/root/.npm npm ci`. Khi chỉ thay đổi mã nguồn, bước `npm ci` được tái sử dụng từ cache layer (`CACHED`), giúp thời gian build chỉ mất vài giây.
 
 Kiểm tra trạng thái sẵn sàng của toàn bộ container:
