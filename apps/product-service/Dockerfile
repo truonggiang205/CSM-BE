@@ -12,6 +12,7 @@ COPY apps/notification-service/package*.json ./apps/notification-service/
 COPY apps/order-service/package*.json ./apps/order-service/
 COPY apps/payment-service/package*.json ./apps/payment-service/
 COPY apps/product-service/package*.json ./apps/product-service/
+COPY libs/config/package.json ./libs/config/
 
 # Dùng cache mount cho npm
 RUN --mount=type=cache,target=/root/.npm npm ci
@@ -37,11 +38,12 @@ COPY apps/notification-service/package*.json ./apps/notification-service/
 COPY apps/order-service/package*.json ./apps/order-service/
 COPY apps/payment-service/package*.json ./apps/payment-service/
 COPY apps/product-service/package*.json ./apps/product-service/
+COPY libs/config/package.json ./libs/config/
 
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 COPY --from=builder /usr/src/app/apps/product-service/dist ./dist
-COPY --from=builder /usr/src/app/libs/config ./node_modules/@csm/config
+COPY --from=builder /usr/src/app/libs/config ./libs/config
 
 EXPOSE 3002
 
