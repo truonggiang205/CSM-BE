@@ -1879,6 +1879,7 @@ async function runSuite() {
       env: {
         ...process.env,
         PORT: String(localPaymentPort),
+        PAYMENT_PORT: String(localPaymentPort),
         PAYMENT_SIMULATION: 'false',
         ORDER_SERVICE_URL: process.env.ORDER_SERVICE_URL || 'http://localhost:3004',
       },
