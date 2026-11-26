@@ -202,7 +202,7 @@ async function runSuite() {
     async () => {
       const res = await axios.post(`${BASE_URL}/auth/login`, {
         email: 'admin@csm.vn',
-        password: process.env.E2E_ADMIN_PASSWORD || SEED_PASSWORD,
+        password: process.env.E2E_ADMIN_PASSWORD || process.env.SEED_ADMIN_PASSWORD || SEED_PASSWORD,
       });
       adminAccessToken = res.data.accessToken;
       adminRefreshToken = res.data.refreshToken;
@@ -220,7 +220,7 @@ async function runSuite() {
     async () => {
       const res = await axios.post(`${BASE_URL}/auth/login`, {
         email: 'customer@csm.vn',
-        password: process.env.E2E_CUSTOMER_PASSWORD || SEED_PASSWORD,
+        password: process.env.E2E_CUSTOMER_PASSWORD || process.env.SEED_CUSTOMER_PASSWORD || SEED_PASSWORD,
       });
       customerAccessToken = res.data.accessToken;
       return res;
@@ -237,7 +237,7 @@ async function runSuite() {
     async () => {
       const res = await axios.post(`${BASE_URL}/auth/login`, {
         email: 'manager.q1@csm.vn',
-        password: process.env.E2E_MANAGER_PASSWORD || SEED_PASSWORD,
+        password: process.env.E2E_MANAGER_PASSWORD || process.env.SEED_MANAGER_PASSWORD || SEED_PASSWORD,
       });
       managerAccessToken = res.data.accessToken;
       return res;

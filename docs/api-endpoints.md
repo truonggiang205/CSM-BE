@@ -32,6 +32,32 @@ Quyền truy cập được xác định chính xác theo mã nguồn thực t�
 | `PUT` | `/api/v1/products/:id` | **ADMIN** (`RolesGuard`) | Path: `id`<br>Body: thông tin cập nhật | `200`, `401`, `403`, `404` | Cập nhật thông tin hoặc giá bán gốc của sản phẩm |
 | `DELETE` | `/api/v1/products/:id` | **ADMIN** (`RolesGuard`) | Path: `id` | `200`, `401`, `403` | Xoá sản phẩm khỏi hệ thống |
 
+
+### 2.1 Tùy chỉnh trang chủ (`/api/v1/storefront`)
+
+`branchId` để trống hoặc `global` là cấu hình toàn chuỗi (chỉ **ADMIN**). **BRANCH_MANAGER** luôn bị gán chi nhánh lấy từ token (`x-branch-id`), không sửa được nội dung toàn chuỗi hay chi nhánh khác.
+
+| Method | Đường dẫn API | Quyền truy cập (RBAC) | Tham số / Body chính | Mã HTTP phản hồi | Mô tả nghiệp vụ & Ghi chú bảo mật |
+| :--- | :--- | :--- | :--- | :---: | :--- |
+| `GET` | `/api/v1/storefront/home` | **Public** | Query: `branchId` | `200` | Nội dung giao diện cho khách: `banners` (slider trang chủ), `placements` (`PRODUCTS_TOP`, `CART`, `POPUP` tối đa 1), `announcements` (thanh thông báo), `sections` (3 khối sản phẩm), `layout` (thứ tự/bật tắt 10 khối, `null` = mặc định). Nội dung chi nhánh đứng trước/ghi đè toàn chuỗi |
+| `POST` | `/api/v1/storefront/banners/:id/click` | **Public** | Path: `id` | `200`, `404` | Tăng `click_count` của banner (đo hiệu quả) |
+| `GET` | `/api/v1/storefront/banners` | **ADMIN, BRANCH_MANAGER** | Query: `branchId`, `placement` | `200`, `401`, `403` | Danh sách banner của một phạm vi, kể cả đang tắt |
+| `POST` | `/api/v1/storefront/banners` | **ADMIN, BRANCH_MANAGER** | Body: `placement` (`HOME_HERO` mặc định, `PRODUCTS_TOP`, `CART`, `POPUP`), `title`, `image_url`, `highlight`, `badge`, `description`, `link_url`, `cta_text`, `is_active`, `start_at`, `end_at`, `branch_id` | `201`, `400`, `403` | Tạo banner |
+| `PUT` | `/api/v1/storefront/banners/reorder` | **ADMIN, BRANCH_MANAGER** | Body: `ids[]` | `200`, `400`, `403`, `404` | Sắp xếp lại banner cùng phạm vi và cùng vị trí |
+| `PUT` | `/api/v1/storefront/banners/:id` | **ADMIN, BRANCH_MANAGER** | Body: các trường cần sửa | `200`, `403`, `404` | Cập nhật banner |
+| `DELETE` | `/api/v1/storefront/banners/:id` | **ADMIN, BRANCH_MANAGER** | Path: `id` | `200`, `403`, `404` | Xóa banner |
+| `POST` | `/api/v1/storefront/images` | **ADMIN, BRANCH_MANAGER** | Multipart: `image` (JPG/PNG/WEBP ≤ 2MB) | `201`, `400` | Tải ảnh banner, trả về `image_url` |
+| `GET` | `/api/v1/storefront/sections` | **ADMIN, BRANCH_MANAGER** | Query: `branchId` | `200`, `403` | Cấu hình 3 khối của một phạm vi |
+| `PUT` | `/api/v1/storefront/sections/:type` | **ADMIN, BRANCH_MANAGER** | Body: `title`, `subtitle`, `is_active`, `start_at`, `end_at`, `branch_id`, `items[{product_id, note}]` (≤ 20) | `200`, `400`, `403`, `404` | Tạo/cập nhật khối, thay toàn bộ danh sách sản phẩm theo thứ tự gửi lên |
+| `DELETE` | `/api/v1/storefront/sections/:type` | **ADMIN, BRANCH_MANAGER** | Query: `branchId` | `200`, `403`, `404` | Xóa cấu hình khối, trang chủ quay về khối toàn chuỗi hoặc mặc định |
+| `GET` | `/api/v1/storefront/announcements` | **ADMIN, BRANCH_MANAGER** | Query: `branchId` | `200`, `403` | Danh sách thanh thông báo của một phạm vi |
+| `POST` | `/api/v1/storefront/announcements` | **ADMIN, BRANCH_MANAGER** | Body: `message`, `link_url`, `link_text`, `tone` (`primary`, `accent`, `danger`, `info`, `dark`), `is_active`, `start_at`, `end_at`, `branch_id` | `201`, `400`, `403` | Tạo thông báo |
+| `PUT` | `/api/v1/storefront/announcements/:id` | **ADMIN, BRANCH_MANAGER** | Body: các trường cần sửa | `200`, `403`, `404` | Cập nhật thông báo |
+| `DELETE` | `/api/v1/storefront/announcements/:id` | **ADMIN, BRANCH_MANAGER** | Path: `id` | `200`, `403`, `404` | Xóa thông báo |
+| `GET` | `/api/v1/storefront/layout` | **ADMIN, BRANCH_MANAGER** | Query: `branchId` | `200`, `403` | Bố cục riêng của phạm vi (`blocks: null` nếu chưa cấu hình) |
+| `PUT` | `/api/v1/storefront/layout` | **ADMIN, BRANCH_MANAGER** | Body: `branch_id`, `blocks[{key, visible}]` | `200`, `400`, `403` | Lưu thứ tự và bật/tắt các khối trang chủ |
+| `DELETE` | `/api/v1/storefront/layout` | **ADMIN, BRANCH_MANAGER** | Query: `branchId` | `200`, `403`, `404` | Xóa bố cục riêng, quay về bố cục toàn chuỗi/mặc định |
+
 ---
 
 ## 3. Branch & Inventory Service (`/api/v1/branches`, `/api/v1/inventory`, Port 3003)
