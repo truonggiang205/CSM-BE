@@ -99,12 +99,16 @@ export class StorefrontController {
       relations: ['items', 'items.product', 'items.product.category'],
     });
 
+    // Khối chỉ được dùng khi đang hiệu lực và có ít nhất 1 sản phẩm còn tồn tại;
+    // khối rỗng nhường lại cho khối toàn chuỗi hoặc cách chọn mặc định ở Frontend.
+    const usable = (s: HomeSection) => isLive(s, now) && (s.items || []).some((i) => i.product);
+
     const sections: Record<string, any> = {};
     for (const type of HOME_SECTION_TYPES) {
       const branchSection = branchId
-        ? sectionRows.find((s) => s.type === type && s.branch_id === branchId && isLive(s, now))
+        ? sectionRows.find((s) => s.type === type && s.branch_id === branchId && usable(s))
         : undefined;
-      const globalSection = sectionRows.find((s) => s.type === type && s.branch_id === null && isLive(s, now));
+      const globalSection = sectionRows.find((s) => s.type === type && s.branch_id === null && usable(s));
       const chosen = branchSection || globalSection;
       sections[type] = chosen ? this.serializeSection(chosen) : null;
     }
