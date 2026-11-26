@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Body, Param, Patch, Query, Req, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Delete, Query, Req, ForbiddenException } from '@nestjs/common';
 import { DiscountService } from './discount.service';
 import { ValidateVoucherDto } from './dto/validate-voucher.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { CreateFlashSaleDto } from './dto/create-flash-sale.dto';
+import { UpdateFlashSaleDto } from './dto/update-flash-sale.dto';
 
 const getInternalSecret = () => process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token';
 
@@ -107,5 +109,55 @@ export class DiscountController {
       throw new ForbiddenException('Chỉ ADMIN mới có quyền bật/tắt voucher');
     }
     return this.discountService.toggleVoucher(id);
+  }
+
+  @Get(['flash-sales', 'discounts/flash-sales'])
+  getAllFlashSales() {
+    return this.discountService.getAllFlashSales();
+  }
+
+  @Get(['flash-sales/current', 'discounts/flash-sales/current'])
+  getActiveOrUpcomingFlashSale() {
+    return this.discountService.getActiveOrUpcomingFlashSale();
+  }
+
+  @Get(['today-deals', 'discounts/today-deals'])
+  getTodayDeals() {
+    return this.discountService.getTodayDeals();
+  }
+
+  @Get(['flash-sales/:id', 'discounts/flash-sales/:id'])
+  getFlashSaleById(@Param('id') id: string) {
+    return this.discountService.getFlashSaleById(id);
+  }
+
+  @Post(['flash-sales', 'discounts/flash-sales'])
+  createFlashSale(@Body() dto: CreateFlashSaleDto) {
+    return this.discountService.createFlashSale(dto);
+  }
+
+  @Patch(['flash-sales/:id', 'discounts/flash-sales/:id'])
+  updateFlashSale(@Param('id') id: string, @Body() dto: UpdateFlashSaleDto) {
+    return this.discountService.updateFlashSale(id, dto);
+  }
+
+  @Patch(['flash-sales/:id/toggle', 'discounts/flash-sales/:id/toggle'])
+  toggleFlashSale(@Param('id') id: string) {
+    return this.discountService.toggleFlashSale(id);
+  }
+
+  @Delete(['flash-sales/:id', 'discounts/flash-sales/:id'])
+  deleteFlashSale(@Param('id') id: string) {
+    return this.discountService.deleteFlashSale(id);
+  }
+
+  @Post(['flash-sales/record-purchase', 'discounts/flash-sales/record-purchase'])
+  recordFlashSalePurchases(@Body('items') items: Array<{ productId: string; quantity: number }>) {
+    return this.discountService.recordFlashSalePurchases(items || []);
+  }
+
+  @Post(['flash-sales/rollback-purchase', 'discounts/flash-sales/rollback-purchase'])
+  rollbackFlashSalePurchases(@Body('items') items: Array<{ productId: string; quantity: number }>) {
+    return this.discountService.rollbackFlashSalePurchases(items || []);
   }
 }

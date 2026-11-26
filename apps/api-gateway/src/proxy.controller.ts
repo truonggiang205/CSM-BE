@@ -18,6 +18,8 @@ const SERVICE_MAP: Record<string, string> = {
   uploads: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
   vouchers: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
   discounts: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  'flash-sales': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  'today-deals': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
 };
 
 function isPublicEndpoint(method: string, pathUrl: string): boolean {
@@ -43,7 +45,13 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
     return true;
   }
   if (m === 'GET') {
-    if (normPath === '/vouchers' || normPath === '/discounts' || normPath === '/discounts/vouchers') {
+    if (
+      normPath === '/vouchers' ||
+      normPath === '/discounts' ||
+      normPath === '/discounts/vouchers' ||
+      normPath.startsWith('/flash-sales') ||
+      normPath.startsWith('/today-deals')
+    ) {
       return true;
     }
   }

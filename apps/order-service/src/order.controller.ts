@@ -55,7 +55,18 @@ export class OrderController {
       );
     }
 
-    // --- BƯỚC 0.2: XÁC THỰC GIÁ VÀ TÊN TỪ PRODUCT SERVICE (KHÔNG TIN GIÁ/TÊN BODY GỬI LÊN) ---
+    const activeFlashSaleMap = new Map<string, number>();
+    try {
+      const fsRes = await axios.get(`${DISCOUNT_SERVICE_URL}/flash-sales/current`, { timeout: 3000 });
+      if (fsRes.data && fsRes.data.status === 'ACTIVE' && Array.isArray(fsRes.data.items)) {
+        for (const fsItem of fsRes.data.items) {
+          if (fsItem.product_id && Number(fsItem.sale_price) > 0) {
+            activeFlashSaleMap.set(String(fsItem.product_id), Number(fsItem.sale_price));
+          }
+        }
+      }
+    } catch {}
+
     const verifiedItems = await Promise.all(
       items.map(async (item) => {
         try {
@@ -64,7 +75,9 @@ export class OrderController {
           if (!product || !product.id) {
             throw new Error('Not found');
           }
-          const price = Number(product.base_price) || 0;
+          const basePrice = Number(product.base_price) || 0;
+          const flashSalePrice = activeFlashSaleMap.get(product.id.toString());
+          const price = flashSalePrice !== undefined && flashSalePrice > 0 && flashSalePrice < basePrice ? flashSalePrice : basePrice;
           return {
             productId: product.id.toString(),
             productName: product.name,
@@ -149,6 +162,9 @@ export class OrderController {
     let savedOrder: Order;
 
     try {
+      const isCod = !paymentMethod || paymentMethod.toUpperCase() === 'COD';
+      const initialStatus = isCod ? OrderStatus.CONFIRMED : OrderStatus.PENDING;
+
       const order = this.orderRepository.create({
         id: orderId,
         user_id: userId.toString(),
@@ -158,10 +174,9 @@ export class OrderController {
         voucher_code: appliedVoucherCode,
         total_amount: totalAmount,
         payment_method: paymentMethod || 'COD',
-        status: OrderStatus.PENDING,
+        status: initialStatus,
       });
 
-      // Tạo các OrderItems từ thông tin đã được server xác thực
       order.items = verifiedItems.map(item => this.orderItemRepository.create({
         product_id: item.productId,
         product_name_snapshot: item.productName,
@@ -170,9 +185,20 @@ export class OrderController {
       }));
 
       savedOrder = await this.orderRepository.save(order);
-      console.log(`[OrderService] Đã lưu đơn hàng PENDING vào Database: ${savedOrder.id}`);
+      console.log(`[OrderService] Đã lưu đơn hàng (${initialStatus}) vào Database: ${savedOrder.id}`);
 
-      // BƯỚC 2.5: CLAIM VOUCHER (TĂNG SỐ LƯỢT SỬ DỤNG VÀ GHI NHẬN USER) NẾU CÓ ÁP DỤNG VOUCHER
+      if (initialStatus === OrderStatus.CONFIRMED) {
+        try {
+          await axios.post(`${INVENTORY_SERVICE_URL}/inventory/confirm-deduct`, {
+            branchId: branchId.toString(),
+            referenceId: savedOrder.id,
+            items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
+          });
+        } catch (confirmErr: any) {
+          console.error('[OrderService] Confirm deduct kho thất bại:', confirmErr?.message);
+        }
+      }
+
       if (appliedVoucherCode) {
         try {
           await axios.post(
@@ -242,6 +268,10 @@ export class OrderController {
           );
         }
       }
+
+      axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/record-purchase`, {
+        items: verifiedItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua flash sale thất bại:', e?.message));
     } catch (dbError) {
       if (dbError instanceof HttpException) {
         throw dbError;
@@ -368,9 +398,9 @@ export class OrderController {
         if (newStatus !== OrderStatus.CANCELLED) {
           throw new HttpException('Khách hàng không có quyền chuyển sang trạng thái này', HttpStatus.FORBIDDEN);
         }
-        if (oldStatus !== OrderStatus.PENDING) {
+        if (oldStatus !== OrderStatus.PENDING && oldStatus !== OrderStatus.CONFIRMED) {
           throw new HttpException(
-            'Khách hàng chỉ có quyền huỷ đơn hàng khi đơn còn ở trạng thái PENDING',
+            'Khách hàng chỉ có quyền huỷ đơn hàng khi đơn chưa được giao',
             HttpStatus.FORBIDDEN,
           );
         }
@@ -443,26 +473,35 @@ export class OrderController {
     }
 
     // SAGA ROLLBACK: Hoàn lại lượt sử dụng voucher nếu đơn hàng bị huỷ
-    if (newStatus === OrderStatus.CANCELLED && order.voucher_code) {
-      try {
-        console.log(`[OrderService] Đơn hàng ${order.id} bị huỷ, gọi release voucher ${order.voucher_code}...`);
-        await axios.post(
-          `${DISCOUNT_SERVICE_URL}/discounts/vouchers/release`,
-          {
-            code: order.voucher_code,
-            userId: order.user_id,
-            orderId: order.id,
-          },
-          {
-            headers: {
-              'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+    if (newStatus === OrderStatus.CANCELLED) {
+      if (order.voucher_code) {
+        try {
+          console.log(`[OrderService] Đơn hàng ${order.id} bị huỷ, gọi release voucher ${order.voucher_code}...`);
+          await axios.post(
+            `${DISCOUNT_SERVICE_URL}/discounts/vouchers/release`,
+            {
+              code: order.voucher_code,
+              userId: order.user_id,
+              orderId: order.id,
             },
-            timeout: 5000,
-          },
-        );
-      } catch (err: any) {
-        console.error(`[OrderService] Hoàn voucher thất bại khi huỷ đơn ${order.id}:`, err?.message || err);
+            {
+              headers: {
+                'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+              },
+              timeout: 5000,
+            },
+          );
+        } catch (err: any) {
+          console.error(`[OrderService] Hoàn voucher thất bại khi huỷ đơn ${order.id}:`, err?.message || err);
+        }
       }
+
+      axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/rollback-purchase`, {
+        items: (order.items || []).map((item) => ({
+          productId: item.product_id,
+          quantity: item.quantity,
+        })),
+      }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua flash sale thất bại:', e?.message));
     }
 
     order.status = newStatus;

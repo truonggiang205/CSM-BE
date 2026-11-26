@@ -1,9 +1,19 @@
-import { Injectable, OnModuleInit, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource } from 'typeorm';
 import { Voucher, DiscountType } from './entities/voucher.entity';
 import { VoucherUsage, UsageStatus } from './entities/voucher-usage.entity';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { FlashSaleCampaign } from './entities/flash-sale-campaign.entity';
+import { FlashSaleItem } from './entities/flash-sale-item.entity';
+import { CreateFlashSaleDto } from './dto/create-flash-sale.dto';
+import { UpdateFlashSaleDto } from './dto/update-flash-sale.dto';
 
 @Injectable()
 export class DiscountService implements OnModuleInit {
@@ -13,6 +23,10 @@ export class DiscountService implements OnModuleInit {
     @InjectRepository(VoucherUsage)
     private readonly usageRepo: Repository<VoucherUsage>,
     private readonly dataSource: DataSource,
+    @InjectRepository(FlashSaleCampaign)
+    private readonly campaignRepo: Repository<FlashSaleCampaign>,
+    @InjectRepository(FlashSaleItem)
+    private readonly itemRepo: Repository<FlashSaleItem>,
   ) {}
 
   async onModuleInit() {
@@ -66,14 +80,63 @@ export class DiscountService implements OnModuleInit {
             is_active: true,
           },
         ]);
-        console.log('🎉 Đã khởi tạo dữ liệu mẫu 3 Voucher CSM thành công!');
       }
-    } catch (err: any) {
-      console.warn('⚠️ Seed voucher ban đầu bỏ qua:', err?.message || err);
-    }
+
+      const campaignCount = await this.campaignRepo.count();
+      if (campaignCount === 0) {
+        const campaign = this.campaignRepo.create({
+          name: 'Giờ Vàng Giảm Giá CSM - Hôm Nay',
+          start_time: '06:00:00',
+          end_time: '23:59:59',
+          is_active: true,
+          items: [
+            this.itemRepo.create({
+              product_id: 'p2',
+              product_name: 'Bánh mì kẹp thịt nguội',
+              original_price: 25000,
+              sale_price: 19000,
+              discount_percentage: 24,
+              quantity_limit: 100,
+              sold_count: 38,
+              max_per_user: 2,
+            }),
+            this.itemRepo.create({
+              product_id: 'p5',
+              product_name: 'Cà phê sữa đá pha sẵn',
+              original_price: 18000,
+              sale_price: 14000,
+              discount_percentage: 22,
+              quantity_limit: 80,
+              sold_count: 42,
+              max_per_user: 2,
+            }),
+            this.itemRepo.create({
+              product_id: 'p4',
+              product_name: 'Mì ly Modern chua cay',
+              original_price: 9000,
+              sale_price: 7000,
+              discount_percentage: 22,
+              quantity_limit: 150,
+              sold_count: 89,
+              max_per_user: 3,
+            }),
+            this.itemRepo.create({
+              product_id: 'p3',
+              product_name: "Snack khoai tây O'Star",
+              original_price: 12000,
+              sale_price: 9000,
+              discount_percentage: 25,
+              quantity_limit: 120,
+              sold_count: 55,
+              max_per_user: 2,
+            }),
+          ],
+        });
+        await this.campaignRepo.save(campaign);
+      }
+    } catch {}
   }
 
-  // Lấy danh sách voucher công khai còn hiệu lực (tự động loại bỏ mã mà người dùng đã dùng hết lượt)
   async getPublicVouchers(userId?: string) {
     const now = new Date();
     const vouchers = await this.voucherRepo.find({
@@ -85,44 +148,34 @@ export class DiscountService implements OnModuleInit {
       order: { created_at: 'DESC' },
     });
 
-    // Lọc theo tổng lượt dùng toàn hệ thống
-    const availableVouchers = vouchers.filter(
-      (v) => !v.usage_limit || v.used_count < v.usage_limit,
-    );
-
-    // Nếu có userId, kiểm tra và loại bỏ các mã mà user này đã dùng hết số lượt cho phép
-    if (userId && userId.trim() !== '' && userId !== 'anonymous') {
-      const userUsages = await this.usageRepo.find({
-        where: {
-          user_id: userId.trim(),
-          status: UsageStatus.USED,
-        },
-        select: ['voucher_id'],
-      });
-
-      const usageCountMap = new Map<string, number>();
-      for (const u of userUsages) {
-        usageCountMap.set(u.voucher_id, (usageCountMap.get(u.voucher_id) || 0) + 1);
-      }
-
-      return availableVouchers.filter((v) => {
-        const usedByUser = usageCountMap.get(v.id) || 0;
-        const maxPerUser = v.max_usage_per_user || 1;
-        return usedByUser < maxPerUser;
-      });
+    if (!userId) {
+      return vouchers.filter((v) => v.used_count < v.usage_limit);
     }
 
-    return availableVouchers;
+    const userUsages = await this.usageRepo.find({
+      where: { user_id: userId, status: UsageStatus.USED },
+    });
+
+    const userUsageCountMap = new Map<string, number>();
+    for (const u of userUsages) {
+      const current = userUsageCountMap.get(u.voucher_id) || 0;
+      userUsageCountMap.set(u.voucher_id, current + 1);
+    }
+
+    return vouchers.filter((v) => {
+      if (v.used_count >= v.usage_limit) return false;
+      const userUsed = userUsageCountMap.get(v.id) || 0;
+      if (userUsed >= v.max_usage_per_user) return false;
+      return true;
+    });
   }
 
-  // Lấy toàn bộ danh sách voucher (dành cho Admin)
   async getAllVouchers() {
     return this.voucherRepo.find({
       order: { created_at: 'DESC' },
     });
   }
 
-  // Lấy danh sách lịch sử sử dụng voucher
   async getVoucherUsages(voucherId: string) {
     return this.usageRepo.find({
       where: { voucher_id: voucherId },
@@ -130,8 +183,12 @@ export class DiscountService implements OnModuleInit {
     });
   }
 
-  // Thuật toán kiểm tra tính hợp lệ, giới hạn từng user, điều kiện phí ship và tính số tiền giảm
-  async validateVoucher(code: string, orderValue: number, userId?: string, shippingFee?: number) {
+  async validateVoucher(
+    code: string,
+    orderValue: number,
+    userId?: string,
+    shippingFee: number = 0,
+  ) {
     const normalizedCode = code.trim().toUpperCase();
     const voucher = await this.voucherRepo.findOne({ where: { code: normalizedCode } });
 
@@ -140,108 +197,74 @@ export class DiscountService implements OnModuleInit {
     }
 
     if (!voucher.is_active) {
-      throw new BadRequestException(`Mã giảm giá '${normalizedCode}' hiện đang tạm dừng áp dụng.`);
+      throw new BadRequestException(`Mã giảm giá '${normalizedCode}' hiện đang tạm khóa.`);
     }
 
     const now = new Date();
-    if (now < new Date(voucher.start_date)) {
-      throw new BadRequestException(`Mã giảm giá '${normalizedCode}' chưa đến thời gian áp dụng.`);
+    if (now < voucher.start_date) {
+      throw new BadRequestException(`Mã giảm giá '${normalizedCode}' chưa tới ngày áp dụng.`);
     }
 
-    if (now > new Date(voucher.end_date)) {
-      throw new BadRequestException(`Mã giảm giá '${normalizedCode}' đã hết hạn sử dụng.`);
+    if (now > voucher.end_date) {
+      throw new BadRequestException(`Mã giảm giá '${normalizedCode}' đã hết hạn.`);
     }
 
-    if (voucher.usage_limit && voucher.used_count >= voucher.usage_limit) {
-      throw new BadRequestException(`Mã giảm giá '${normalizedCode}' đã hết lượt sử dụng trên hệ thống.`);
+    if (voucher.used_count >= voucher.usage_limit) {
+      throw new BadRequestException(`Mã giảm giá '${normalizedCode}' đã hết lượt sử dụng.`);
     }
 
     if (orderValue < Number(voucher.min_order_value)) {
       throw new BadRequestException(
-        `Đơn hàng chưa đạt giá trị tối thiểu ${Number(voucher.min_order_value).toLocaleString('vi-VN')}đ để dùng mã này.`,
+        `Đơn hàng chưa đạt giá trị tối thiểu ${Number(voucher.min_order_value).toLocaleString('vi-VN')}đ để sử dụng mã này.`,
       );
     }
 
-    // KIỂM TRA ĐIỀU KIỆN MÃ FREESHIP: CHỈ ÁP DỤNG KHI ĐƠN HÀNG CÓ PHÍ VẬN CHUYỂN
-    const isFreeshipVoucher =
-      voucher.is_freeship ||
-      voucher.code.toUpperCase().includes('FREESHIP') ||
-      voucher.code.toUpperCase().includes('SHIP') ||
-      (voucher.description && voucher.description.toLowerCase().includes('vận chuyển'));
-
-    if (isFreeshipVoucher) {
-      // Xác định phí vận chuyển thực tế: nếu client truyền thì dùng, nếu không truyền dựa vào ngưỡng freeship tự động (150.000đ)
-      const effectiveShippingFee =
-        shippingFee !== undefined
-          ? Number(shippingFee)
-          : (orderValue >= 150000 ? 0 : 15000);
-
-      if (effectiveShippingFee <= 0) {
-        throw new BadRequestException(
-          'Mã freeship chỉ áp dụng cho đơn hàng có phí vận chuyển. Đơn hàng hiện tại của bạn đã được miễn phí vận chuyển.',
-        );
-      }
-    }
-
-    // KIỂM TRA GIỚI HẠN DÙNG CỦA TỪNG TÀI KHOẢN (MỖI USER CHỈ ĐƯỢC DÙNG N LẦN)
-    if (userId && userId.trim() !== '' && userId !== 'anonymous') {
-      const maxPerUser = voucher.max_usage_per_user || 1;
-      const userUsedCount = await this.usageRepo.count({
+    if (userId) {
+      const userUsageCount = await this.usageRepo.count({
         where: {
           voucher_id: voucher.id,
-          user_id: userId.trim(),
+          user_id: userId,
           status: UsageStatus.USED,
         },
       });
 
-      if (userUsedCount >= maxPerUser) {
-        throw new NotFoundException(
-          `Mã giảm giá '${normalizedCode}' không tồn tại hoặc đã hết hạn sử dụng.`,
+      if (userUsageCount >= voucher.max_usage_per_user) {
+        throw new BadRequestException(
+          `Bạn đã sử dụng hết lượt cho phép (${voucher.max_usage_per_user} lần) của mã '${normalizedCode}'.`,
         );
       }
     }
 
     let discountAmount = 0;
-    if (voucher.discount_type === DiscountType.FIXED_AMOUNT) {
+    if (voucher.is_freeship) {
+      discountAmount = Math.min(Number(voucher.discount_value), Number(shippingFee));
+    } else if (voucher.discount_type === DiscountType.FIXED_AMOUNT) {
       discountAmount = Number(voucher.discount_value);
     } else if (voucher.discount_type === DiscountType.PERCENTAGE) {
-      discountAmount = Math.round((orderValue * Number(voucher.discount_value)) / 100);
-      if (voucher.max_discount_amount && discountAmount > Number(voucher.max_discount_amount)) {
-        discountAmount = Number(voucher.max_discount_amount);
+      discountAmount = (orderValue * Number(voucher.discount_value)) / 100;
+      if (voucher.max_discount_amount) {
+        discountAmount = Math.min(discountAmount, Number(voucher.max_discount_amount));
       }
     }
 
-    // Nếu là mã freeship: mức giảm tối đa bằng đúng tiền phí vận chuyển
-    if (isFreeshipVoucher) {
-      const effectiveShippingFee =
-        shippingFee !== undefined
-          ? Number(shippingFee)
-          : (orderValue >= 150000 ? 0 : 15000);
-      if (discountAmount > effectiveShippingFee) {
-        discountAmount = effectiveShippingFee;
-      }
-    } else if (discountAmount > orderValue) {
-      discountAmount = orderValue;
-    }
+    discountAmount = Math.min(discountAmount, orderValue + (voucher.is_freeship ? Number(shippingFee) : 0));
+    const finalAmount = Math.max(0, orderValue - (voucher.is_freeship ? 0 : discountAmount));
 
     return {
       valid: true,
       isValid: true,
       code: voucher.code,
-      isFreeship: isFreeshipVoucher,
+      isFreeship: voucher.is_freeship,
+      discountAmount,
+      finalAmount,
       voucher: {
         id: voucher.id,
         code: voucher.code,
         description: voucher.description,
         discount_type: voucher.discount_type,
         discount_value: Number(voucher.discount_value),
-        max_discount_amount: voucher.max_discount_amount ? Number(voucher.max_discount_amount) : null,
-        min_order_value: Number(voucher.min_order_value),
-        max_usage_per_user: voucher.max_usage_per_user || 1,
-        is_freeship: isFreeshipVoucher,
+        is_freeship: voucher.is_freeship,
       },
-      discountAmount,
-      finalAmount: orderValue - discountAmount,
     };
   }
 
@@ -387,7 +410,6 @@ export class DiscountService implements OnModuleInit {
     });
   }
 
-  // Admin tạo voucher
   async createVoucher(dto: CreateVoucherDto) {
     const code = dto.code.trim().toUpperCase();
     const existing = await this.voucherRepo.findOne({ where: { code } });
@@ -415,11 +437,305 @@ export class DiscountService implements OnModuleInit {
     return this.voucherRepo.save(voucher);
   }
 
-  // Admin toggle bật/tắt voucher
   async toggleVoucher(id: string) {
     const voucher = await this.voucherRepo.findOne({ where: { id } });
     if (!voucher) throw new NotFoundException('Không tìm thấy voucher');
     voucher.is_active = !voucher.is_active;
     return this.voucherRepo.save(voucher);
+  }
+
+  private async validateNoOverlappingCampaign(
+    startTime: string,
+    endTime: string,
+    applyDate?: string,
+    excludeCampaignId?: string,
+  ) {
+    const s1 = startTime.length === 5 ? `${startTime}:00` : startTime;
+    const e1 = endTime.length === 5 ? `${endTime}:00` : endTime;
+
+    const allCampaigns = await this.campaignRepo.find({
+      where: { is_active: true },
+    });
+
+    for (const c of allCampaigns) {
+      if (excludeCampaignId && c.id === excludeCampaignId) continue;
+
+      const dateOverlap =
+        !applyDate || !c.apply_date || applyDate === c.apply_date;
+
+      if (!dateOverlap) continue;
+
+      const s2 = c.start_time.length === 5 ? `${c.start_time}:00` : c.start_time;
+      const e2 = c.end_time.length === 5 ? `${c.end_time}:00` : c.end_time;
+
+      const timeOverlap = s1 < e2 && s2 < e1;
+
+      if (timeOverlap) {
+        throw new ConflictException(
+          `Khung giờ ${s1.slice(0, 5)} - ${e1.slice(0, 5)} bị trùng với ca Giờ Vàng '${c.name}' (${s2.slice(0, 5)} - ${e2.slice(0, 5)}). Mỗi khung giờ chỉ được phép tồn tại duy nhất 1 ca Giờ Vàng.`,
+        );
+      }
+    }
+  }
+
+  async createFlashSale(dto: CreateFlashSaleDto) {
+    if (dto.is_active !== false) {
+      await this.validateNoOverlappingCampaign(
+        dto.start_time,
+        dto.end_time,
+        dto.apply_date,
+      );
+    }
+
+    const campaign = this.campaignRepo.create({
+      name: dto.name,
+      apply_date: dto.apply_date,
+      start_time: dto.start_time,
+      end_time: dto.end_time,
+      is_active: dto.is_active !== undefined ? dto.is_active : true,
+      banner_url: dto.banner_url,
+      items: (dto.items || []).map((i) =>
+        this.itemRepo.create({
+          product_id: i.product_id,
+          product_name: i.product_name,
+          product_image: i.product_image,
+          original_price: Number(i.original_price),
+          sale_price: Number(i.sale_price),
+          discount_percentage: Number(i.discount_percentage) || 0,
+          quantity_limit: Number(i.quantity_limit) || 50,
+          sold_count: 0,
+          max_per_user: Number(i.max_per_user) || 2,
+        }),
+      ),
+    });
+
+    return this.campaignRepo.save(campaign);
+  }
+
+  async getAllFlashSales() {
+    return this.campaignRepo.find({
+      relations: ['items'],
+      order: { created_at: 'DESC' },
+    });
+  }
+
+  async getFlashSaleById(id: string) {
+    const campaign = await this.campaignRepo.findOne({
+      where: { id },
+      relations: ['items'],
+    });
+    if (!campaign) throw new NotFoundException('Không tìm thấy chiến dịch Giờ Vàng');
+    return campaign;
+  }
+
+  async updateFlashSale(id: string, dto: UpdateFlashSaleDto) {
+    const campaign = await this.campaignRepo.findOne({
+      where: { id },
+      relations: ['items'],
+    });
+    if (!campaign) throw new NotFoundException('Không tìm thấy chiến dịch Giờ Vàng');
+
+    const targetStart = dto.start_time !== undefined ? dto.start_time : campaign.start_time;
+    const targetEnd = dto.end_time !== undefined ? dto.end_time : campaign.end_time;
+    const targetDate = dto.apply_date !== undefined ? dto.apply_date : campaign.apply_date;
+    const targetActive = dto.is_active !== undefined ? dto.is_active : campaign.is_active;
+
+    if (targetActive) {
+      await this.validateNoOverlappingCampaign(
+        targetStart,
+        targetEnd,
+        targetDate,
+        id,
+      );
+    }
+
+    if (dto.name !== undefined) campaign.name = dto.name;
+    if (dto.apply_date !== undefined) campaign.apply_date = dto.apply_date;
+    if (dto.start_time !== undefined) campaign.start_time = dto.start_time;
+    if (dto.end_time !== undefined) campaign.end_time = dto.end_time;
+    if (dto.is_active !== undefined) campaign.is_active = dto.is_active;
+    if (dto.banner_url !== undefined) campaign.banner_url = dto.banner_url;
+
+    if (dto.items && Array.isArray(dto.items)) {
+      if (campaign.items && campaign.items.length > 0) {
+        await this.itemRepo.remove(campaign.items);
+      }
+      campaign.items = dto.items.map((i) =>
+        this.itemRepo.create({
+          product_id: i.product_id,
+          product_name: i.product_name,
+          product_image: i.product_image,
+          original_price: Number(i.original_price),
+          sale_price: Number(i.sale_price),
+          discount_percentage: Number(i.discount_percentage) || 0,
+          quantity_limit: Number(i.quantity_limit) || 50,
+          sold_count: 0,
+          max_per_user: Number(i.max_per_user) || 2,
+        }),
+      );
+    }
+
+    return this.campaignRepo.save(campaign);
+  }
+
+  async toggleFlashSale(id: string) {
+    const campaign = await this.campaignRepo.findOne({ where: { id } });
+    if (!campaign) throw new NotFoundException('Chiến dịch không tồn tại');
+
+    const nextActive = !campaign.is_active;
+    if (nextActive) {
+      await this.validateNoOverlappingCampaign(
+        campaign.start_time,
+        campaign.end_time,
+        campaign.apply_date,
+        id,
+      );
+    }
+
+    campaign.is_active = nextActive;
+    return this.campaignRepo.save(campaign);
+  }
+
+  async deleteFlashSale(id: string) {
+    const campaign = await this.campaignRepo.findOne({ where: { id } });
+    if (!campaign) throw new NotFoundException('Chiến dịch không tồn tại');
+    await this.campaignRepo.remove(campaign);
+    return { success: true, message: 'Đã xoá chiến dịch thành công' };
+  }
+
+  async getActiveOrUpcomingFlashSale() {
+    const campaigns = await this.campaignRepo.find({
+      where: { is_active: true },
+      relations: ['items'],
+      order: { start_time: 'ASC' },
+    });
+
+    if (campaigns.length === 0) {
+      return { status: 'NONE', campaign: null, items: [] };
+    }
+
+    const vnDate = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const currentHours = String(vnDate.getUTCHours()).padStart(2, '0');
+    const currentMinutes = String(vnDate.getUTCMinutes()).padStart(2, '0');
+    const currentSeconds = String(vnDate.getUTCSeconds()).padStart(2, '0');
+    const currentTimeStr = `${currentHours}:${currentMinutes}:${currentSeconds}`;
+    const todayStr = vnDate.toISOString().split('T')[0];
+
+    const validCampaigns = campaigns.filter((c) => {
+      if (!c.apply_date) return true;
+      return c.apply_date.slice(0, 10) === todayStr;
+    });
+
+    if (validCampaigns.length === 0) {
+      return { status: 'NONE', campaign: null, items: [] };
+    }
+
+    const activeCampaign = validCampaigns.find((c) => {
+      const s = c.start_time.length === 5 ? `${c.start_time}:00` : c.start_time;
+      const e = c.end_time.length === 5 ? `${c.end_time}:00` : c.end_time;
+      return currentTimeStr >= s && currentTimeStr <= e;
+    });
+
+    if (activeCampaign) {
+      return {
+        status: 'ACTIVE',
+        campaign: activeCampaign,
+        startTime: activeCampaign.start_time,
+        endTime: activeCampaign.end_time,
+        targetTime: activeCampaign.end_time,
+        items: activeCampaign.items || [],
+      };
+    }
+
+    const upcomingCampaign = validCampaigns.find((c) => {
+      const s = c.start_time.length === 5 ? `${c.start_time}:00` : c.start_time;
+      return currentTimeStr < s;
+    });
+
+    if (upcomingCampaign) {
+      return {
+        status: 'UPCOMING',
+        campaign: upcomingCampaign,
+        startTime: upcomingCampaign.start_time,
+        endTime: upcomingCampaign.end_time,
+        targetTime: upcomingCampaign.start_time,
+        items: upcomingCampaign.items || [],
+      };
+    }
+
+    return { status: 'NONE', campaign: null, items: [] };
+  }
+
+  async getTodayDeals() {
+    const flashSale = await this.getActiveOrUpcomingFlashSale();
+    const vouchers = await this.getPublicVouchers();
+
+    const currentCampaign = flashSale.campaign;
+    const deals = [];
+
+    if (flashSale.status === 'ACTIVE' && currentCampaign) {
+      for (const item of currentCampaign.items || []) {
+        deals.push({
+          id: item.id,
+          product_id: item.product_id,
+          product_name: item.product_name,
+          original_price: Number(item.original_price),
+          sale_price: Number(item.sale_price),
+          discount_percentage: Number(item.discount_percentage) || 0,
+          quantity_limit: Number(item.quantity_limit) || 50,
+          sold_count: Number(item.sold_count) || 0,
+          max_per_user: Number(item.max_per_user) || 2,
+          campaign_id: currentCampaign.id,
+          campaign_name: currentCampaign.name,
+          start_time: currentCampaign.start_time,
+          end_time: currentCampaign.end_time,
+          status: flashSale.status,
+        });
+      }
+    }
+
+    return {
+      flashSale,
+      vouchers,
+      deals,
+    };
+  }
+
+  async recordFlashSalePurchases(items: Array<{ productId: string; quantity: number }>) {
+    const current = await this.getActiveOrUpcomingFlashSale();
+    if (current.status !== 'ACTIVE' || !current.campaign || !current.items || current.items.length === 0) {
+      return { success: true, updated: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const p of items) {
+      const match = current.items.find((item) => String(item.product_id) === String(p.productId));
+      if (match) {
+        match.sold_count = (match.sold_count || 0) + Number(p.quantity || 1);
+        await this.itemRepo.save(match);
+        updatedCount++;
+      }
+    }
+
+    return { success: true, updated: updatedCount };
+  }
+
+  async rollbackFlashSalePurchases(items: Array<{ productId: string; quantity: number }>) {
+    const current = await this.getActiveOrUpcomingFlashSale();
+    if (!current.campaign || !current.items || current.items.length === 0) {
+      return { success: true, rolledBack: 0 };
+    }
+
+    let rolledBackCount = 0;
+    for (const p of items) {
+      const match = current.items.find((item) => String(item.product_id) === String(p.productId));
+      if (match) {
+        match.sold_count = Math.max(0, (match.sold_count || 0) - Number(p.quantity || 1));
+        await this.itemRepo.save(match);
+        rolledBackCount++;
+      }
+    }
+
+    return { success: true, rolledBack: rolledBackCount };
   }
 }
