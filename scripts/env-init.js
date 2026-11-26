@@ -42,7 +42,7 @@ function main() {
   fs.mkdirSync(targetDir, { recursive: true });
 
   const mysqlPass = randomHex64().slice(0, 32);
-  const mysqlRootPass = randomHex64().slice(0, 32);
+  const mysqlRootPass = mysqlPass;
   const jwtSecret = randomHex64();
   const jwtRefreshSecret = randomHex64();
   const internalSecret = randomHex64();
