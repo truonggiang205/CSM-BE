@@ -10,10 +10,20 @@ import {
   IsArray,
   ValidateNested,
   ArrayMaxSize,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BANNER_PLACEMENTS, BannerPlacement } from '../entities/banner.entity';
+import { ANNOUNCEMENT_TONES, AnnouncementTone } from '../entities/announcement.entity';
+import { HOME_BLOCK_KEYS, HomeBlockKey } from '../entities/home-layout.entity';
+
+const PLACEMENT_MSG = `placement phải là một trong: ${BANNER_PLACEMENTS.join(', ')}`;
 
 export class CreateBannerDto {
+  @IsOptional()
+  @IsIn(BANNER_PLACEMENTS as unknown as string[], { message: PLACEMENT_MSG })
+  placement?: BannerPlacement;
+
   @IsNotEmpty({ message: 'Tiêu đề banner không được để trống' })
   @IsString()
   @MaxLength(150)
@@ -73,6 +83,7 @@ export class CreateBannerDto {
 }
 
 export class UpdateBannerDto {
+  @IsOptional() @IsIn(BANNER_PLACEMENTS as unknown as string[], { message: PLACEMENT_MSG }) placement?: BannerPlacement;
   @IsOptional() @IsString() @MaxLength(150) title?: string;
   @IsOptional() @IsString() @MaxLength(150) highlight?: string | null;
   @IsOptional() @IsString() @MaxLength(80) badge?: string | null;
@@ -121,4 +132,53 @@ export class UpsertSectionDto {
   @ValidateNested({ each: true })
   @Type(() => SectionItemDto)
   items: SectionItemDto[];
+}
+
+export class CreateAnnouncementDto {
+  @IsNotEmpty({ message: 'Nội dung thông báo không được để trống' })
+  @IsString()
+  @MaxLength(255)
+  message: string;
+
+  @IsOptional() @IsString() @MaxLength(500) link_url?: string | null;
+  @IsOptional() @IsString() @MaxLength(60) link_text?: string | null;
+
+  @IsOptional()
+  @IsIn(ANNOUNCEMENT_TONES as unknown as string[], { message: `tone phải là một trong: ${ANNOUNCEMENT_TONES.join(', ')}` })
+  tone?: AnnouncementTone;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) sort_order?: number;
+  @IsOptional() @IsBoolean() is_active?: boolean;
+  @IsOptional() @IsDateString() start_at?: string | null;
+  @IsOptional() @IsDateString() end_at?: string | null;
+  @IsOptional() @IsString() branch_id?: string | null;
+}
+
+export class UpdateAnnouncementDto {
+  @IsOptional() @IsString() @MaxLength(255) message?: string;
+  @IsOptional() @IsString() @MaxLength(500) link_url?: string | null;
+  @IsOptional() @IsString() @MaxLength(60) link_text?: string | null;
+  @IsOptional() @IsIn(ANNOUNCEMENT_TONES as unknown as string[]) tone?: AnnouncementTone;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) sort_order?: number;
+  @IsOptional() @IsBoolean() is_active?: boolean;
+  @IsOptional() @IsDateString() start_at?: string | null;
+  @IsOptional() @IsDateString() end_at?: string | null;
+}
+
+export class LayoutBlockDto {
+  @IsIn(HOME_BLOCK_KEYS as unknown as string[], { message: `key phải là một trong: ${HOME_BLOCK_KEYS.join(', ')}` })
+  key: HomeBlockKey;
+
+  @IsBoolean()
+  visible: boolean;
+}
+
+export class UpsertLayoutDto {
+  @IsOptional() @IsString() branch_id?: string | null;
+
+  @IsArray()
+  @ArrayMaxSize(HOME_BLOCK_KEYS.length)
+  @ValidateNested({ each: true })
+  @Type(() => LayoutBlockDto)
+  blocks: LayoutBlockDto[];
 }

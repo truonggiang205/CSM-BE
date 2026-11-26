@@ -14,18 +14,29 @@ import {
   UseInterceptors,
   UploadedFile,
   UseFilters,
+  HttpCode,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
-import { Banner } from '../entities/banner.entity';
+import { Banner, BANNER_PLACEMENTS, BannerPlacement } from '../entities/banner.entity';
+import { Announcement } from '../entities/announcement.entity';
+import { HomeLayout, HOME_BLOCK_KEYS, HomeLayoutBlock } from '../entities/home-layout.entity';
 import { HomeSection, HOME_SECTION_TYPES, HomeSectionType } from '../entities/home-section.entity';
 import { HomeSectionItem } from '../entities/home-section-item.entity';
 import { Product } from '../entities/product.entity';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators/roles.decorator';
 import { MulterExceptionFilter } from '../filters/multer-exception.filter';
-import { CreateBannerDto, UpdateBannerDto, ReorderBannersDto, UpsertSectionDto } from '../dto/storefront.dto';
+import {
+  CreateBannerDto,
+  UpdateBannerDto,
+  ReorderBannersDto,
+  UpsertSectionDto,
+  CreateAnnouncementDto,
+  UpdateAnnouncementDto,
+  UpsertLayoutDto,
+} from '../dto/storefront.dto';
 import { saveUploadedImage, MAX_IMAGE_SIZE } from '../utils/image-upload';
 import {
   getActor,
@@ -41,6 +52,38 @@ const MANAGERS = ['ADMIN', 'BRANCH_MANAGER'];
 
 function branchWhere(branchId: string | null) {
   return branchId === null ? IsNull() : branchId;
+}
+
+function normalizePlacement(raw?: string): BannerPlacement | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const upper = String(raw).toUpperCase();
+  if (!(BANNER_PLACEMENTS as readonly string[]).includes(upper)) {
+    throw new BadRequestException(`Vị trí banner không hợp lệ. Chấp nhận: ${BANNER_PLACEMENTS.join(', ')}`);
+  }
+  return upper as BannerPlacement;
+}
+
+/** Sắp xếp: bản ghi của chi nhánh trước, toàn chuỗi sau, rồi theo sort_order. */
+function branchFirst<T extends { branch_id: string | null; sort_order: number }>(a: T, b: T): number {
+  const aBranch = a.branch_id ? 0 : 1;
+  const bBranch = b.branch_id ? 0 : 1;
+  if (aBranch !== bBranch) return aBranch - bBranch;
+  return a.sort_order - b.sort_order;
+}
+
+/** Chuẩn hoá bố cục: bỏ khóa trùng, bổ sung khối còn thiếu (ẩn ở cuối) để FE luôn đủ 10 khối. */
+export function normalizeLayoutBlocks(blocks: HomeLayoutBlock[]): HomeLayoutBlock[] {
+  const seen = new Set<string>();
+  const result: HomeLayoutBlock[] = [];
+  for (const b of blocks || []) {
+    if (!(HOME_BLOCK_KEYS as readonly string[]).includes(b.key) || seen.has(b.key)) continue;
+    seen.add(b.key);
+    result.push({ key: b.key, visible: !!b.visible });
+  }
+  for (const key of HOME_BLOCK_KEYS) {
+    if (!seen.has(key)) result.push({ key, visible: true });
+  }
+  return result;
 }
 
 function assertSectionType(type: string): HomeSectionType {
@@ -63,6 +106,10 @@ export class StorefrontController {
     private readonly sectionItemRepository: Repository<HomeSectionItem>,
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
+    @InjectRepository(Announcement)
+    private readonly announcementRepository: Repository<Announcement>,
+    @InjectRepository(HomeLayout)
+    private readonly layoutRepository: Repository<HomeLayout>,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -71,8 +118,11 @@ export class StorefrontController {
 
   /**
    * GET /storefront/home?branchId=br-01
-   * Trả về banner đang hiệu lực (chi nhánh trước, toàn chuỗi sau) và các khối sản phẩm nổi bật.
-   * Khối của chi nhánh (nếu đang hiệu lực) ghi đè khối toàn chuỗi cùng loại.
+   * Toàn bộ nội dung giao diện cho khách, theo chi nhánh đang chọn:
+   * - banners: slider trang chủ (HOME_HERO); placements: banner ở các vị trí khác
+   * - announcements: thanh thông báo trên cùng
+   * - sections: các khối sản phẩm nổi bật; layout: thứ tự/bật tắt khối trang chủ
+   * Nội dung chi nhánh luôn đứng trước/ghi đè nội dung toàn chuỗi.
    */
   @Get('home')
   async getHome(@Query('branchId') rawBranchId?: string) {
@@ -85,14 +135,27 @@ export class StorefrontController {
       order: { sort_order: 'ASC', created_at: 'DESC' },
     });
 
-    const banners = bannerRows
-      .filter((b) => isLive(b, now))
-      .sort((a, b) => {
-        const aBranch = a.branch_id ? 0 : 1;
-        const bBranch = b.branch_id ? 0 : 1;
-        if (aBranch !== bBranch) return aBranch - bBranch;
-        return a.sort_order - b.sort_order;
-      });
+    const liveBanners = bannerRows.filter((b) => isLive(b, now)).sort(branchFirst);
+    const byPlacement = (p: BannerPlacement) => liveBanners.filter((b) => (b.placement || 'HOME_HERO') === p);
+    const banners = byPlacement('HOME_HERO');
+    const placements = {
+      PRODUCTS_TOP: byPlacement('PRODUCTS_TOP'),
+      CART: byPlacement('CART'),
+      POPUP: byPlacement('POPUP').slice(0, 1),
+    };
+
+    const announcementRows = await this.announcementRepository.find({
+      where: scopes.map((b) => ({ branch_id: b as any, is_active: true })),
+      order: { sort_order: 'ASC', created_at: 'DESC' },
+    });
+    const announcements = announcementRows.filter((a) => isLive(a, now)).sort(branchFirst);
+
+    const layoutRows = await this.layoutRepository.find({
+      where: scopes.map((b) => ({ branch_id: b as any })),
+    });
+    const layoutRow =
+      (branchId && layoutRows.find((l) => l.branch_id === branchId)) || layoutRows.find((l) => l.branch_id === null);
+    const layout = layoutRow ? normalizeLayoutBlocks(layoutRow.blocks) : null;
 
     const sectionRows = await this.sectionRepository.find({
       where: scopes.map((b) => ({ branch_id: b as any })),
@@ -113,7 +176,7 @@ export class StorefrontController {
       sections[type] = chosen ? this.serializeSection(chosen) : null;
     }
 
-    return { branch_id: branchId, banners, sections };
+    return { branch_id: branchId, banners, placements, announcements, sections, layout };
   }
 
   // ---------------------------------------------------------------------------
@@ -123,11 +186,16 @@ export class StorefrontController {
   /** GET /storefront/banners?branchId=global|br-01 — danh sách banner của một phạm vi (kể cả đang tắt). */
   @Roles(...MANAGERS)
   @Get('banners')
-  async listBanners(@Headers() headers: Record<string, any>, @Query('branchId') rawBranchId?: string) {
+  async listBanners(
+    @Headers() headers: Record<string, any>,
+    @Query('branchId') rawBranchId?: string,
+    @Query('placement') rawPlacement?: string,
+  ) {
     const actor = getActor(headers);
     const branchId = resolveWritableBranch(actor, rawBranchId);
+    const placement = normalizePlacement(rawPlacement);
     return this.bannerRepository.find({
-      where: { branch_id: branchWhere(branchId) as any },
+      where: { branch_id: branchWhere(branchId) as any, ...(placement ? { placement } : {}) },
       order: { sort_order: 'ASC', created_at: 'DESC' },
     });
   }
@@ -141,16 +209,18 @@ export class StorefrontController {
     const end_at = parseDate(body.end_at) ?? null;
     assertDateRange(start_at, end_at);
 
+    const placement = body.placement || 'HOME_HERO';
     let sortOrder = body.sort_order;
     if (sortOrder === undefined) {
       const last = await this.bannerRepository.findOne({
-        where: { branch_id: branchWhere(branchId) as any },
+        where: { branch_id: branchWhere(branchId) as any, placement },
         order: { sort_order: 'DESC' },
       });
       sortOrder = last ? last.sort_order + 1 : 0;
     }
 
     const banner = this.bannerRepository.create({
+      placement,
       title: body.title,
       highlight: body.highlight ?? null,
       badge: body.badge ?? null,
@@ -180,10 +250,11 @@ export class StorefrontController {
       throw new NotFoundException('Có banner không tồn tại trong danh sách sắp xếp');
     }
     const scope = banners[0].branch_id;
+    const placement = banners[0].placement;
     for (const b of banners) {
       assertCanManage(actor, b.branch_id);
-      if (b.branch_id !== scope) {
-        throw new BadRequestException('Chỉ sắp xếp được các banner trong cùng một phạm vi');
+      if (b.branch_id !== scope || b.placement !== placement) {
+        throw new BadRequestException('Chỉ sắp xếp được các banner cùng phạm vi và cùng vị trí');
       }
     }
 
@@ -210,6 +281,7 @@ export class StorefrontController {
     assertCanManage(actor, banner.branch_id);
 
     const fields: (keyof UpdateBannerDto)[] = [
+      'placement',
       'title',
       'highlight',
       'badge',
@@ -241,6 +313,149 @@ export class StorefrontController {
     assertCanManage(actor, banner.branch_id);
     await this.bannerRepository.delete(id);
     return { success: true, message: 'Xóa banner thành công' };
+  }
+
+  /**
+   * POST /storefront/banners/:id/click — công khai, ghi nhận 1 lượt khách bấm banner.
+   * Chỉ tăng bộ đếm, không trả dữ liệu nhạy cảm.
+   */
+  @Post('banners/:id/click')
+  @HttpCode(200)
+  async trackBannerClick(@Param('id') id: string) {
+    const result = await this.bannerRepository.increment({ id }, 'click_count', 1);
+    if (!result.affected) throw new NotFoundException('Không tìm thấy banner');
+    return { success: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // ADMIN / BRANCH_MANAGER: thanh thông báo trên cùng
+  // ---------------------------------------------------------------------------
+
+  @Roles(...MANAGERS)
+  @Get('announcements')
+  async listAnnouncements(@Headers() headers: Record<string, any>, @Query('branchId') rawBranchId?: string) {
+    const actor = getActor(headers);
+    const branchId = resolveWritableBranch(actor, rawBranchId);
+    return this.announcementRepository.find({
+      where: { branch_id: branchWhere(branchId) as any },
+      order: { sort_order: 'ASC', created_at: 'DESC' },
+    });
+  }
+
+  @Roles(...MANAGERS)
+  @Post('announcements')
+  async createAnnouncement(@Headers() headers: Record<string, any>, @Body() body: CreateAnnouncementDto) {
+    const actor = getActor(headers);
+    const branchId = resolveWritableBranch(actor, body.branch_id);
+    const start_at = parseDate(body.start_at) ?? null;
+    const end_at = parseDate(body.end_at) ?? null;
+    assertDateRange(start_at, end_at);
+
+    let sortOrder = body.sort_order;
+    if (sortOrder === undefined) {
+      const last = await this.announcementRepository.findOne({
+        where: { branch_id: branchWhere(branchId) as any },
+        order: { sort_order: 'DESC' },
+      });
+      sortOrder = last ? last.sort_order + 1 : 0;
+    }
+
+    const item = this.announcementRepository.create({
+      message: body.message,
+      link_url: body.link_url ?? null,
+      link_text: body.link_text ?? null,
+      tone: body.tone ?? 'primary',
+      sort_order: sortOrder,
+      is_active: body.is_active ?? true,
+      start_at,
+      end_at,
+      branch_id: branchId,
+      created_by: actor.userId,
+    });
+    return this.announcementRepository.save(item);
+  }
+
+  @Roles(...MANAGERS)
+  @Put('announcements/:id')
+  async updateAnnouncement(
+    @Headers() headers: Record<string, any>,
+    @Param('id') id: string,
+    @Body() body: UpdateAnnouncementDto,
+  ) {
+    const actor = getActor(headers);
+    const item = await this.announcementRepository.findOne({ where: { id } });
+    if (!item) throw new NotFoundException('Không tìm thấy thông báo');
+    assertCanManage(actor, item.branch_id);
+
+    const fields: (keyof UpdateAnnouncementDto)[] = ['message', 'link_url', 'link_text', 'tone', 'sort_order', 'is_active'];
+    for (const f of fields) {
+      if (body[f] !== undefined) (item as any)[f] = body[f];
+    }
+    const start = parseDate(body.start_at);
+    const end = parseDate(body.end_at);
+    if (start !== undefined) item.start_at = start;
+    if (end !== undefined) item.end_at = end;
+    assertDateRange(item.start_at, item.end_at);
+    return this.announcementRepository.save(item);
+  }
+
+  @Roles(...MANAGERS)
+  @Delete('announcements/:id')
+  async deleteAnnouncement(@Headers() headers: Record<string, any>, @Param('id') id: string) {
+    const actor = getActor(headers);
+    const item = await this.announcementRepository.findOne({ where: { id } });
+    if (!item) throw new NotFoundException('Không tìm thấy thông báo');
+    assertCanManage(actor, item.branch_id);
+    await this.announcementRepository.delete(id);
+    return { success: true, message: 'Đã xóa thông báo' };
+  }
+
+  // ---------------------------------------------------------------------------
+  // ADMIN / BRANCH_MANAGER: bố cục trang chủ
+  // ---------------------------------------------------------------------------
+
+  /** GET /storefront/layout?branchId= — bố cục riêng của phạm vi (null nếu đang dùng mặc định/toàn chuỗi). */
+  @Roles(...MANAGERS)
+  @Get('layout')
+  async getLayout(@Headers() headers: Record<string, any>, @Query('branchId') rawBranchId?: string) {
+    const actor = getActor(headers);
+    const branchId = resolveWritableBranch(actor, rawBranchId);
+    const row = await this.layoutRepository.findOne({ where: { branch_id: branchWhere(branchId) as any } });
+    return {
+      branch_id: branchId,
+      blocks: row ? normalizeLayoutBlocks(row.blocks) : null,
+      updated_at: row?.updated_at ?? null,
+    };
+  }
+
+  @Roles(...MANAGERS)
+  @Put('layout')
+  async upsertLayout(@Headers() headers: Record<string, any>, @Body() body: UpsertLayoutDto) {
+    const actor = getActor(headers);
+    const branchId = resolveWritableBranch(actor, body.branch_id);
+    const keys = body.blocks.map((b) => b.key);
+    if (new Set(keys).size !== keys.length) {
+      throw new BadRequestException('Mỗi khối chỉ được xuất hiện một lần');
+    }
+    const blocks = normalizeLayoutBlocks(body.blocks);
+
+    let row = await this.layoutRepository.findOne({ where: { branch_id: branchWhere(branchId) as any } });
+    if (!row) row = this.layoutRepository.create({ branch_id: branchId });
+    row.blocks = blocks;
+    row.updated_by = actor.userId;
+    const saved = await this.layoutRepository.save(row);
+    return { branch_id: branchId, blocks, updated_at: saved.updated_at ?? null };
+  }
+
+  @Roles(...MANAGERS)
+  @Delete('layout')
+  async deleteLayout(@Headers() headers: Record<string, any>, @Query('branchId') rawBranchId?: string) {
+    const actor = getActor(headers);
+    const branchId = resolveWritableBranch(actor, rawBranchId);
+    const row = await this.layoutRepository.findOne({ where: { branch_id: branchWhere(branchId) as any } });
+    if (!row) throw new NotFoundException('Phạm vi này chưa có bố cục riêng');
+    await this.layoutRepository.delete(row.id);
+    return { success: true, message: 'Đã khôi phục bố cục mặc định' };
   }
 
   /** POST /storefront/images (multipart, field "image") — tải ảnh banner, trả về image_url. */

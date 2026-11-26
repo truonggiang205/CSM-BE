@@ -70,6 +70,10 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
   if (m === 'GET' && normPath.startsWith('/storefront/home')) {
     return true;
   }
+  // Ghi nhận lượt bấm banner (khách chưa đăng nhập vẫn được đếm)
+  if (m === 'POST' && /^\/storefront\/banners\/[^/]+\/click\/?$/.test(normPath)) {
+    return true;
+  }
 
   // 3. Payment simulation endpoint (hỗ trợ trình duyệt redirect mô phỏng thanh toán)
   if (normPath.startsWith('/payments/simulate-success')) {

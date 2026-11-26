@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { StorefrontController } from './storefront.controller';
+import { StorefrontController, normalizeLayoutBlocks } from './storefront.controller';
 import { resolveWritableBranch, assertCanManage, isLive, normalizeBranchId } from './storefront.access';
 
 const ADMIN = { 'x-user-role': 'ADMIN', 'x-user-id': 'u-admin' };
@@ -57,6 +57,8 @@ describe('StorefrontController', () => {
   let sectionRepo: any;
   let itemRepo: any;
   let productRepo: any;
+  let announcementRepo: any;
+  let layoutRepo: any;
 
   beforeEach(() => {
     bannerRepo = {
@@ -65,6 +67,7 @@ describe('StorefrontController', () => {
       create: jest.fn((d) => ({ ...d })),
       save: jest.fn(async (d) => d),
       delete: jest.fn(async () => ({})),
+      increment: jest.fn(async () => ({ affected: 1 })),
     };
     sectionRepo = {
       find: jest.fn(async () => []),
@@ -79,7 +82,21 @@ describe('StorefrontController', () => {
       delete: jest.fn(async () => ({})),
     };
     productRepo = { find: jest.fn(async () => []) };
-    controller = new StorefrontController(bannerRepo, sectionRepo, itemRepo, productRepo);
+    announcementRepo = {
+      find: jest.fn(async () => []),
+      findOne: jest.fn(async () => null),
+      create: jest.fn((d) => ({ ...d })),
+      save: jest.fn(async (d) => d),
+      delete: jest.fn(async () => ({})),
+    };
+    layoutRepo = {
+      find: jest.fn(async () => []),
+      findOne: jest.fn(async () => null),
+      create: jest.fn((d) => ({ id: 'lay-1', ...d })),
+      save: jest.fn(async (d) => d),
+      delete: jest.fn(async () => ({})),
+    };
+    controller = new StorefrontController(bannerRepo, sectionRepo, itemRepo, productRepo, announcementRepo, layoutRepo);
   });
 
   it('manager creating a banner is forced to own branch', async () => {
@@ -220,5 +237,86 @@ describe('StorefrontController', () => {
       ['p2', null],
       ['p1', 'ngon'],
     ]);
+  });
+
+  it('home splits banners by placement and only returns one popup', async () => {
+    const mk = (id: string, placement: string, branch_id: string | null = null, sort_order = 0) => ({
+      id, placement, branch_id, sort_order, is_active: true, start_at: null, end_at: null,
+    });
+    bannerRepo.find.mockResolvedValue([
+      mk('hero', 'HOME_HERO'),
+      mk('top', 'PRODUCTS_TOP'),
+      mk('cart', 'CART'),
+      mk('pop-global', 'POPUP', null, 0),
+      mk('pop-branch', 'POPUP', 'br-01', 3),
+    ]);
+    const home = await controller.getHome('br-01');
+    expect(home.banners.map((b: any) => b.id)).toEqual(['hero']);
+    expect(home.placements.PRODUCTS_TOP.map((b: any) => b.id)).toEqual(['top']);
+    expect(home.placements.CART.map((b: any) => b.id)).toEqual(['cart']);
+    expect(home.placements.POPUP.map((b: any) => b.id)).toEqual(['pop-branch']);
+  });
+
+  it('home returns live announcements branch-first and branch layout over global', async () => {
+    announcementRepo.find.mockResolvedValue([
+      { id: 'a-global', branch_id: null, sort_order: 0, is_active: true, start_at: null, end_at: null },
+      { id: 'a-branch', branch_id: 'br-01', sort_order: 9, is_active: true, start_at: null, end_at: null },
+      { id: 'a-old', branch_id: null, sort_order: 1, is_active: true, start_at: null, end_at: new Date('2000-01-01') },
+    ]);
+    layoutRepo.find.mockResolvedValue([
+      { branch_id: null, blocks: [{ key: 'TESTIMONIALS', visible: true }] },
+      { branch_id: 'br-01', blocks: [{ key: 'SPIN_WHEEL', visible: false }] },
+    ]);
+    const home = await controller.getHome('br-01');
+    expect(home.announcements.map((a: any) => a.id)).toEqual(['a-branch', 'a-global']);
+    expect(home.layout![0]).toEqual({ key: 'SPIN_WHEEL', visible: false });
+    expect(home.layout).toHaveLength(10);
+
+    const globalHome = await controller.getHome(undefined);
+    expect(globalHome.layout![0].key).toBe('TESTIMONIALS');
+  });
+
+  it('normalizeLayoutBlocks drops unknown/duplicate keys and appends missing ones', () => {
+    const blocks = normalizeLayoutBlocks([
+      { key: 'COMBO', visible: false },
+      { key: 'COMBO', visible: true },
+      { key: 'BOGUS' as any, visible: true },
+    ]);
+    expect(blocks[0]).toEqual({ key: 'COMBO', visible: false });
+    expect(blocks).toHaveLength(10);
+    expect(new Set(blocks.map((b) => b.key)).size).toBe(10);
+  });
+
+  it('banner click increments counter and 404s for unknown banner', async () => {
+    await expect(controller.trackBannerClick('b1')).resolves.toEqual({ success: true });
+    expect(bannerRepo.increment).toHaveBeenCalledWith({ id: 'b1' }, 'click_count', 1);
+    bannerRepo.increment.mockResolvedValue({ affected: 0 });
+    await expect(controller.trackBannerClick('nope')).rejects.toThrow(NotFoundException);
+  });
+
+  it('reorder refuses mixing placements', async () => {
+    bannerRepo.find.mockResolvedValue([
+      { id: 'b1', branch_id: 'br-01', placement: 'HOME_HERO', sort_order: 0 },
+      { id: 'b2', branch_id: 'br-01', placement: 'CART', sort_order: 1 },
+    ]);
+    await expect(controller.reorderBanners(MANAGER_BR1, { ids: ['b2', 'b1'] })).rejects.toThrow(BadRequestException);
+  });
+
+  it('manager announcement is pinned to own branch; cannot edit global one', async () => {
+    const created = await controller.createAnnouncement(MANAGER_BR1, { message: 'Freeship 100k' } as any);
+    expect(created).toMatchObject({ branch_id: 'br-01', tone: 'primary', sort_order: 0 });
+    announcementRepo.findOne.mockResolvedValue({ id: 'a1', branch_id: null });
+    await expect(controller.updateAnnouncement(MANAGER_BR1, 'a1', { message: 'x' })).rejects.toThrow(ForbiddenException);
+    await expect(controller.deleteAnnouncement(MANAGER_BR1, 'a1')).rejects.toThrow(ForbiddenException);
+  });
+
+  it('upsertLayout rejects duplicates and saves normalized blocks for manager branch', async () => {
+    await expect(
+      controller.upsertLayout(ADMIN, { blocks: [{ key: 'COMBO', visible: true }, { key: 'COMBO', visible: false }] } as any),
+    ).rejects.toThrow(BadRequestException);
+    const res = await controller.upsertLayout(MANAGER_BR1, { blocks: [{ key: 'SPIN_WHEEL', visible: false }] } as any);
+    expect(res.branch_id).toBe('br-01');
+    expect(res.blocks[0]).toEqual({ key: 'SPIN_WHEEL', visible: false });
+    expect(layoutRepo.save.mock.calls[0][0]).toMatchObject({ branch_id: 'br-01', updated_by: 'u-m1' });
   });
 });
