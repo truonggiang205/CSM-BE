@@ -241,4 +241,18 @@ export class DiscountController {
   ) {
     return this.discountService.evaluateGiftPromotions(items || [], Number(subtotal) || 0);
   }
+
+  // ==================== SPIN WHEEL ====================
+
+  @Get(['spin-wheel/status', 'discounts/spin-wheel/status'])
+  getSpinStatus(@Query('userId') userId?: string, @Req() req?: any) {
+    const resolvedUserId = req?.headers?.['x-user-id'] || userId;
+    return this.discountService.getSpinStatus(resolvedUserId);
+  }
+
+  @Post(['spin-wheel/spin', 'discounts/spin-wheel/spin'])
+  spinWheel(@Body('userId') userId?: string, @Req() req?: any) {
+    const resolvedUserId = req?.headers?.['x-user-id'] || userId;
+    return this.discountService.spinWheel(resolvedUserId);
+  }
 }

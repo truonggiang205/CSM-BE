@@ -20,6 +20,7 @@ import { CreateComboDto } from './dto/create-combo.dto';
 import { UpdateComboDto } from './dto/update-combo.dto';
 import { GiftPromotion } from './entities/gift-promotion.entity';
 import { CreateGiftPromotionDto } from './dto/create-gift-promotion.dto';
+import { SpinHistory } from './entities/spin-history.entity';
 
 @Injectable()
 export class DiscountService implements OnModuleInit {
@@ -39,6 +40,8 @@ export class DiscountService implements OnModuleInit {
     private readonly comboItemRepo: Repository<ComboItem>,
     @InjectRepository(GiftPromotion)
     private readonly giftRepo: Repository<GiftPromotion>,
+    @InjectRepository(SpinHistory)
+    private readonly spinHistoryRepo: Repository<SpinHistory>,
   ) {}
 
   async onModuleInit() {
@@ -1170,5 +1173,97 @@ export class DiscountService implements OnModuleInit {
     }
 
     return qualifiedGifts;
+  }
+
+  // ==================== SPIN WHEEL API ====================
+
+  private getSpinPrizes() {
+    return [
+      { id: 'prize-10k', label: 'Voucher 10K', weight: 25, isWinning: true, code: 'CSM10K' },
+      { id: 'prize-topping', label: 'Free Topping', weight: 25, isWinning: true, code: 'TOPPINGFREE' },
+      { id: 'prize-drink15', label: 'Giảm 15% Nước', weight: 20, isWinning: true, code: 'DRINK15' },
+      { id: 'prize-freeship', label: 'Freeship Đơn', weight: 15, isWinning: true, code: 'FREESHIP99' },
+      { id: 'prize-luck', label: 'Chúc May Mắn', weight: 10, isWinning: false, code: null },
+      { id: 'prize-20k', label: 'Voucher 20K', weight: 5, isWinning: true, code: 'CSM20KSPECIAL' },
+    ];
+  }
+
+  async getSpinStatus(userId?: string) {
+    if (!userId) {
+      return { hasSpunToday: false, todayRecord: null };
+    }
+    const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const existing = await this.spinHistoryRepo.findOne({
+      where: { user_id: String(userId), spin_date: today },
+    });
+    return { hasSpunToday: !!existing, todayRecord: existing || null };
+  }
+
+  async spinWheel(userId?: string) {
+    if (!userId) {
+      throw new BadRequestException('Vui lòng đăng nhập để tham gia Vòng Quay May Mắn');
+    }
+    const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const existing = await this.spinHistoryRepo.findOne({
+      where: { user_id: String(userId), spin_date: today },
+    });
+    if (existing) {
+      throw new ConflictException('Bạn đã hết lượt quay hôm nay. Hãy quay lại vào ngày mai!');
+    }
+
+    const prizes = this.getSpinPrizes();
+    const totalWeight = prizes.reduce((s, p) => s + p.weight, 0);
+    let rand = Math.random() * totalWeight;
+    let chosenIdx = 0;
+    for (let i = 0; i < prizes.length; i++) {
+      if (rand < prizes[i].weight) {
+        chosenIdx = i;
+        break;
+      }
+      rand -= prizes[i].weight;
+    }
+    const chosen = prizes[chosenIdx];
+
+    if (chosen.isWinning && chosen.code) {
+      const existingVoucher = await this.voucherRepo.findOne({ where: { code: chosen.code } });
+      if (!existingVoucher) {
+        const now = new Date();
+        const nextYear = new Date();
+        nextYear.setFullYear(now.getFullYear() + 1);
+        await this.voucherRepo.save(
+          this.voucherRepo.create({
+            code: chosen.code,
+            description: `Phần thưởng Vòng Quay May Mắn: ${chosen.label}`,
+            discount_type: chosen.code === 'DRINK15' ? DiscountType.PERCENTAGE : DiscountType.FIXED_AMOUNT,
+            discount_value: chosen.code === 'CSM20KSPECIAL' ? 20000 : chosen.code === 'DRINK15' ? 15 : 10000,
+            min_order_value: 50000,
+            usage_limit: 5000,
+            max_usage_per_user: 10,
+            is_freeship: chosen.code === 'FREESHIP99',
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
+          }),
+        );
+      }
+    }
+
+    const record = await this.spinHistoryRepo.save(
+      this.spinHistoryRepo.create({
+        user_id: String(userId),
+        spin_date: today,
+        prize_id: chosen.id,
+        prize_label: chosen.label,
+        voucher_code: chosen.code || null,
+      }),
+    );
+
+    return {
+      prizeIndex: chosenIdx,
+      prizeId: chosen.id,
+      prizeLabel: chosen.label,
+      voucherCode: chosen.code,
+      record,
+    };
   }
 }
