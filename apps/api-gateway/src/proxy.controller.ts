@@ -22,6 +22,7 @@ const SERVICE_MAP: Record<string, string> = {
   'today-deals': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
   combos: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
   'gift-promotions': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  'spin-wheel': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
 };
 
 function isPublicEndpoint(method: string, pathUrl: string): boolean {
@@ -54,7 +55,8 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
       normPath.startsWith('/flash-sales') ||
       normPath.startsWith('/today-deals') ||
       normPath.startsWith('/combos') ||
-      normPath.startsWith('/gift-promotions')
+      normPath.startsWith('/gift-promotions') ||
+      normPath.startsWith('/spin-wheel')
     ) {
       return true;
     }
