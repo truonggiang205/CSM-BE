@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import axios from 'axios';
+import { requireEnv } from '@csm/config';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -184,7 +185,7 @@ export class OrderController {
             },
             {
               headers: {
-                'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+                'x-internal-secret': requireEnv('INTERNAL_SECRET'),
               },
               timeout: 5000,
             },
@@ -227,7 +228,7 @@ export class OrderController {
               },
               {
                 headers: {
-                  'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+                  'x-internal-secret': requireEnv('INTERNAL_SECRET'),
                 },
                 timeout: 5000,
               },
@@ -268,7 +269,7 @@ export class OrderController {
             },
             {
               headers: {
-                'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+                'x-internal-secret': requireEnv('INTERNAL_SECRET'),
               },
               timeout: 5000,
             },
@@ -291,7 +292,7 @@ export class OrderController {
           },
           {
             headers: {
-              'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+              'x-internal-secret': requireEnv('INTERNAL_SECRET'),
             },
           },
         );
@@ -455,7 +456,7 @@ export class OrderController {
           },
           {
             headers: {
-              'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+              'x-internal-secret': requireEnv('INTERNAL_SECRET'),
             },
             timeout: 5000,
           },

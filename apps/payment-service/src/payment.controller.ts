@@ -2,13 +2,14 @@ import { Controller, Post, Get, Body, Param, Query, Req, Res, HttpStatus, HttpEx
 import { Request, Response } from 'express';
 import axios from 'axios';
 import * as jwt from 'jsonwebtoken';
+import { requireEnv } from '@csm/config';
 
 const getOrderServiceUrl = () => process.env.ORDER_SERVICE_URL || 'http://localhost:3004';
-const getInternalSecret = () => process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token';
+const getInternalSecret = () => requireEnv('INTERNAL_SECRET');
 const getPublicGatewayUrl = () => (process.env.PUBLIC_GATEWAY_URL || 'http://localhost:8000').replace(/\/+$/, '');
 const getFrontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
-const getPaymentSimulationSecret = () => process.env.PAYMENT_SIMULATION_SECRET || 'csm-payment-simulation-secret-key-2026';
-const getJwtSecret = () => process.env.JWT_SECRET || 'super-secret-jwt-access-token-key-32chars';
+const getPaymentSimulationSecret = () => requireEnv('PAYMENT_SIMULATION_SECRET');
+const getJwtSecret = () => requireEnv('JWT_SECRET');
 
 // Helper escape chuỗi an toàn chống XSS trong HTML
 export function escapeHtml(str: any): string {
@@ -30,7 +31,7 @@ export class PaymentController {
 
   // Cờ PAYMENT_SIMULATION CHỈ đọc từ ConfigService / env server, tuyệt đối không cho phép bypass qua request
   private ensureSimulationEnabled() {
-    const isEnabled = (process.env.PAYMENT_SIMULATION ?? 'true') === 'true';
+    const isEnabled = (process.env.PAYMENT_SIMULATION ?? 'false') === 'true';
     if (!isEnabled) {
       throw new HttpException('Chức năng mô phỏng thanh toán đã bị vô hiệu hóa', HttpStatus.NOT_FOUND);
     }

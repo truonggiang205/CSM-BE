@@ -12,29 +12,39 @@ if (!process.env.AUTH_DB_URL) {
   dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 }
 
+const seedPassword = process.env.SEED_PASSWORD;
+if (!seedPassword) {
+  console.error('❌ Thiếu biến môi trường bắt buộc: SEED_PASSWORD');
+  process.exit(1);
+}
+
 const seedUsers = [
   {
     email: 'admin@csm.vn',
-    password: 'Admin@123456',
+    password: process.env.SEED_ADMIN_PASSWORD || seedPassword,
     role: UserRole.ADMIN,
     branch_id: null,
   },
   {
     email: 'manager.q1@csm.vn',
-    password: 'Manager@123456',
+    password: process.env.SEED_MANAGER_PASSWORD || seedPassword,
     role: UserRole.BRANCH_MANAGER,
     branch_id: 'br-01',
   },
   {
     email: 'customer@csm.vn',
-    password: 'Customer@123456',
+    password: process.env.SEED_CUSTOMER_PASSWORD || seedPassword,
     role: UserRole.CUSTOMER,
     branch_id: null,
   },
 ];
 
 async function runSeed() {
-  const dbUrl = process.env.AUTH_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_auth';
+  const dbUrl = process.env.AUTH_DB_URL;
+  if (!dbUrl) {
+    console.error('❌ Thiếu biến môi trường bắt buộc: AUTH_DB_URL');
+    process.exit(1);
+  }
   const hasSsl = dbUrl.includes('ssl-mode=REQUIRED');
 
   const dataSource = new DataSource({

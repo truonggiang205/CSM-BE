@@ -15,6 +15,8 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
 
   beforeEach(async () => {
     mockUsers.length = 0;
+    process.env.JWT_SECRET = 'unit-test-jwt-secret-key-min-32-chars!!';
+    process.env.JWT_REFRESH_SECRET = 'unit-test-refresh-secret-key-min-32-chars';
 
     userRepository = {
       findOne: jest.fn().mockImplementation(async (query: any) => {

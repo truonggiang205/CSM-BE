@@ -23,12 +23,16 @@ async function runMigrationTest() {
   console.log('🛠️ BẮT ĐẦU KIỂM THỬ MIGRATION TOÀN DIỆN VỚI DB_SYNC=false');
   console.log('================================================================');
 
-  const rawUrl = process.env.ORDER_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_order';
+  const rawUrl = process.env.ORDER_DB_URL;
+  if (!rawUrl) {
+    console.error('❌ Thiếu biến môi trường bắt buộc: ORDER_DB_URL');
+    process.exit(1);
+  }
   const parsedUrl = new URL(rawUrl);
   const host = parsedUrl.hostname || 'localhost';
   const port = Number(parsedUrl.port) || 3306;
-  const user = parsedUrl.username || 'root';
-  const password = parsedUrl.password || 'rootpassword';
+  const user = decodeURIComponent(parsedUrl.username || 'root');
+  const password = decodeURIComponent(parsedUrl.password || '');
   const isSsl = rawUrl.includes('ssl-mode=REQUIRED');
 
   // ============================================================================
