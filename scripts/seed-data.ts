@@ -16,6 +16,10 @@ import { StockTransaction, TransactionType } from '../apps/inventory-service/src
 import { User, UserRole } from '../apps/auth-service/src/entities/user.entity';
 import { Order, OrderStatus } from '../apps/order-service/src/entities/order.entity';
 import { OrderItem } from '../apps/order-service/src/entities/order-item.entity';
+import { FlashSaleCampaign } from '../apps/discount-service/src/entities/flash-sale-campaign.entity';
+import { FlashSaleItem } from '../apps/discount-service/src/entities/flash-sale-item.entity';
+import { Combo } from '../apps/discount-service/src/entities/combo.entity';
+import { ComboItem } from '../apps/discount-service/src/entities/combo-item.entity';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -458,6 +462,14 @@ async function handleReset(dataSources: {
     const [delVouchers]: any = await connDisc.query('DELETE FROM `vouchers`');
     summary['voucher_usages'] = delUsages.affectedRows || 0;
     summary['vouchers'] = delVouchers.affectedRows || 0;
+    for (const tbl of ['flash_sale_items', 'flash_sale_campaigns', 'combo_items', 'combos']) {
+      try {
+        const [delRes]: any = await connDisc.query(`DELETE FROM \`${tbl}\``);
+        summary[tbl] = delRes.affectedRows || 0;
+      } catch {
+        // Bảng có thể chưa tồn tại nếu chưa sync
+      }
+    }
     await connDisc.end();
   } catch (discErr: any) {
     console.warn('  ⚠️ Không thể kết nối csm_discount để reset:', discErr.message);
@@ -579,10 +591,19 @@ async function runSeed() {
     ssl: orderDbUrl.includes('ssl-mode=REQUIRED') ? { rejectUnauthorized: false } : false,
   });
 
+  const discountDs = new DataSource({
+    type: 'mysql',
+    url: discountDbUrl,
+    entities: [FlashSaleCampaign, FlashSaleItem, Combo, ComboItem],
+    synchronize: true,
+    ssl: discountDbUrl.includes('ssl-mode=REQUIRED') ? { rejectUnauthorized: false } : false,
+  });
+
   await authDs.initialize();
   await productDs.initialize();
   await inventoryDs.initialize();
   await orderDs.initialize();
+  await discountDs.initialize();
 
   if (isReset) {
     await handleReset({ authDs, productDs, inventoryDs, orderDs });
@@ -590,6 +611,7 @@ async function runSeed() {
     await productDs.destroy();
     await inventoryDs.destroy();
     await orderDs.destroy();
+    await discountDs.destroy();
     return;
   }
 
@@ -1108,13 +1130,133 @@ async function runSeed() {
     }
   }
 
-  // --- BƯỚC 7: IN BẢNG TỔNG KẾT DỮ LIỆU ĐÃ SEED ---
+  // --- BƯỚC 7: SEED FLASH SALE & COMBO (DISCOUNT DB - IDEMPOTENT) ---
+  console.log('\n📌 Bước 7: Khởi tạo dữ liệu Flash Sale & Combo (Discount DB)...');
+  const campaignRepo = discountDs.getRepository(FlashSaleCampaign);
+  const flashItemRepo = discountDs.getRepository(FlashSaleItem);
+  const comboRepo = discountDs.getRepository(Combo);
+  const comboItemRepo = discountDs.getRepository(ComboItem);
+
+  const findBySkuOrFallback = (sku: string, fallbackIndex: number): Product | undefined =>
+    savedProducts.find((p) => p.sku === sku) || savedProducts[fallbackIndex];
+
+  const existingCampaigns = await campaignRepo.count();
+  if (existingCampaigns === 0 && savedProducts.length >= 4) {
+    const fsTargets = [
+      { prod: findBySkuOrFallback('SKU-DRK-001', 0), discountPct: 25, limit: 60, sold: 14, maxPerUser: 3 },
+      { prod: findBySkuOrFallback('SKU-SNK-001', 1), discountPct: 22, limit: 50, sold: 11, maxPerUser: 2 },
+      { prod: findBySkuOrFallback('SKU-NDL-001', 2), discountPct: 20, limit: 80, sold: 19, maxPerUser: 3 },
+      { prod: findBySkuOrFallback('SKU-MIL-001', 3), discountPct: 20, limit: 50, sold: 9, maxPerUser: 2 },
+    ].filter((t): t is { prod: Product; discountPct: number; limit: number; sold: number; maxPerUser: number } => Boolean(t.prod));
+
+    if (fsTargets.length > 0) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const campaign = campaignRepo.create({
+        name: 'Giờ Vàng Giảm Giá CSM - Hôm Nay',
+        apply_date: todayStr,
+        start_time: '06:00:00',
+        end_time: '23:59:59',
+        is_active: true,
+        items: fsTargets.map((t) => {
+          const orig = Number(t.prod.base_price) || 10000;
+          const sale = Math.max(1000, Math.round((orig * (100 - t.discountPct)) / 100 / 500) * 500);
+          return flashItemRepo.create({
+            product_id: t.prod.id,
+            product_name: t.prod.name,
+            product_image: t.prod.image_url || undefined,
+            original_price: orig,
+            sale_price: sale,
+            discount_percentage: t.discountPct,
+            quantity_limit: t.limit,
+            sold_count: t.sold,
+            max_per_user: t.maxPerUser,
+          });
+        }),
+      });
+      await campaignRepo.save(campaign);
+      console.log(`  ⚡ Tạo mới Flash Sale "${campaign.name}" (${fsTargets.length} sản phẩm, ngày ${todayStr})`);
+    }
+  } else {
+    console.log(`  ⏭️ Đã có ${existingCampaigns} Flash Sale campaign, bỏ qua.`);
+  }
+
+  const existingCombos = await comboRepo.count();
+  if (existingCombos === 0 && savedProducts.length >= 6) {
+    const comboConfigs = [
+      {
+        name: 'Combo Sáng Năng Lượng',
+        description: 'Nạp năng lượng buổi sáng nhanh gọn với giá tiết kiệm.',
+        discountRate: 0.8,
+        maxQty: 30,
+        items: [
+          { prod: findBySkuOrFallback('SKU-DRK-002', 0), qty: 1 },
+          { prod: findBySkuOrFallback('SKU-SNK-002', 1), qty: 1 },
+        ],
+      },
+      {
+        name: 'Combo Cày Đêm Tiện Lợi',
+        description: 'Mì ly nóng hổi kèm nước tăng lực tiếp sức xuyên đêm.',
+        discountRate: 0.82,
+        maxQty: 25,
+        items: [
+          { prod: findBySkuOrFallback('SKU-NDL-001', 2), qty: 2 },
+          { prod: findBySkuOrFallback('SKU-DRK-001', 3), qty: 1 },
+        ],
+      },
+      {
+        name: 'Combo Giải Nhiệt & Ăn Vặt',
+        description: 'Thức uống mát lạnh kết hợp snack giòn rụm cho nhóm bạn.',
+        discountRate: 0.78,
+        maxQty: 40,
+        items: [
+          { prod: findBySkuOrFallback('SKU-DRK-003', 4), qty: 2 },
+          { prod: findBySkuOrFallback('SKU-SNK-001', 5), qty: 1 },
+        ],
+      },
+    ];
+
+    for (const cfg of comboConfigs) {
+      const validItems = cfg.items.filter((i): i is { prod: Product; qty: number } => Boolean(i.prod));
+      if (validItems.length === 0) continue;
+      const originalPrice = validItems.reduce((sum, i) => sum + (Number(i.prod.base_price) || 0) * i.qty, 0);
+      const comboPrice = Math.max(1000, Math.round((originalPrice * cfg.discountRate) / 500) * 500);
+      const coverImage = validItems[0].prod.image_url || null;
+
+      const combo = comboRepo.create({
+        name: cfg.name,
+        description: cfg.description,
+        original_price: originalPrice,
+        combo_price: comboPrice,
+        image_url: coverImage,
+        max_quantity: cfg.maxQty,
+        sold_count: 0,
+        is_active: true,
+        items: validItems.map((i) =>
+          comboItemRepo.create({
+            product_id: i.prod.id,
+            product_name: i.prod.name,
+            product_image: i.prod.image_url || null,
+            original_price: Number(i.prod.base_price) || 0,
+            quantity: i.qty,
+          }),
+        ),
+      });
+      await comboRepo.save(combo);
+      console.log(`  🎁 Tạo mới Combo "${combo.name}" (${validItems.length} món - ${comboPrice.toLocaleString('vi-VN')}đ)`);
+    }
+  } else {
+    console.log(`  ⏭️ Đã có ${existingCombos} Combo, bỏ qua.`);
+  }
+
+  // --- BƯỚC 8: IN BẢNG TỔNG KẾT DỮ LIỆU ĐÃ SEED ---
   const finalUsersCount = await userRepo.count();
   const finalBranchesCount = await branchRepo.count();
   const finalCatsCount = await catRepo.count();
   const finalProdsCount = await prodRepo.count();
   const finalStocksCount = await stockRepo.count();
   const finalOrders = await orderRepo.find();
+  const finalCampaignsCount = await campaignRepo.count();
+  const finalCombosCount = await comboRepo.count();
 
   const ordersByStatus: Record<string, number> = {};
   const ordersByBranch: Record<string, number> = {};
@@ -1136,6 +1278,8 @@ async function runSeed() {
   console.log(`  🛒 Tổng số đơn hàng (Order DB):       ${finalOrders.length} đơn hàng`);
   console.log(`     - Phân bổ theo trạng thái:`, ordersByStatus);
   console.log(`     - Phân bổ theo chi nhánh:  `, ordersByBranch);
+  console.log(`  ⚡ Flash Sale Campaigns (Discount DB): ${finalCampaignsCount} chiến dịch`);
+  console.log(`  🎁 Combo Deals (Discount DB):          ${finalCombosCount} combo`);
   console.log('======================================================');
   console.log('🎉 SEED DỮ LIỆU DEMO HOÀN TẤT THÀNH CÔNG VÀ IDEMPOTENT!\n');
 
@@ -1143,6 +1287,7 @@ async function runSeed() {
   await productDs.destroy();
   await inventoryDs.destroy();
   await orderDs.destroy();
+  await discountDs.destroy();
 }
 
 runSeed().catch((err) => {
