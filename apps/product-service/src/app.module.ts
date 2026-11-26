@@ -5,6 +5,10 @@ import { createEnvValidator } from '@csm/config';
 import { ProductController } from './product.controller';
 import { Product } from './entities/product.entity';
 import { Category } from './entities/category.entity';
+import { Banner } from './entities/banner.entity';
+import { HomeSection } from './entities/home-section.entity';
+import { HomeSectionItem } from './entities/home-section-item.entity';
+import { StorefrontController } from './storefront/storefront.controller';
 
 @Module({
   imports: [
@@ -21,7 +25,7 @@ import { Category } from './entities/category.entity';
       useFactory: (configService: ConfigService) => ({
         type: 'mysql',
         url: configService.get<string>('PRODUCT_DB_URL'),
-        entities: [Product, Category],
+        entities: [Product, Category, Banner, HomeSection, HomeSectionItem],
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
           configService.get<string>('DB_SYNC') === 'true',
@@ -34,9 +38,9 @@ import { Category } from './entities/category.entity';
 
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Product, Category]),
+    TypeOrmModule.forFeature([Product, Category, Banner, HomeSection, HomeSectionItem]),
   ],
-  controllers: [ProductController],
+  controllers: [ProductController, StorefrontController],
   providers: [],
 })
 export class AppModule {}

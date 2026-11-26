@@ -16,6 +16,7 @@ const SERVICE_MAP: Record<string, string> = {
   payments: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005',
   notifications: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
   uploads: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
+  storefront: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
   vouchers: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
   discounts: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
 };
@@ -63,6 +64,11 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
     ) {
       return true;
     }
+  }
+
+  // 2b. Dữ liệu trang chủ (banner + sản phẩm nổi bật) cho khách
+  if (m === 'GET' && normPath.startsWith('/storefront/home')) {
+    return true;
   }
 
   // 3. Payment simulation endpoint (hỗ trợ trình duyệt redirect mô phỏng thanh toán)
