@@ -6,14 +6,12 @@ yarn-error.log*
 dist/
 build/
 
-# Environment Variables
+# Environment Variables (mọi file .env thật: .env, .env.cloud, .env.backup, .env.bad, ...)
+# Chỉ commit file mẫu *.example
 .env
 .env.*
-.env.local
-.env.*.local
 !.env.example
-!*.example
-.env.cloud
+!.env.*.example
 
 # Test & Build Artifacts
 test-results/

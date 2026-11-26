@@ -22,7 +22,7 @@ async function testPersistence() {
   console.log('1. Đăng nhập tài khoản ADMIN...');
   const loginRes = await axios.post(`${API_URL}/auth/login`, {
     email: 'admin@csm.vn',
-    password: SEED_PASSWORD,
+    password: process.env.SEED_ADMIN_PASSWORD || SEED_PASSWORD,
   });
   const token = loginRes.data.accessToken;
   console.log('   ✅ Đăng nhập thành công, nhận token ADMIN.');
