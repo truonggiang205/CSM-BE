@@ -16,6 +16,8 @@ const SERVICE_MAP: Record<string, string> = {
   payments: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005',
   notifications: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
   uploads: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002',
+  vouchers: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  discounts: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
 };
 
 function isPublicEndpoint(method: string, pathUrl: string): boolean {
@@ -34,6 +36,16 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
   // File uploads route is public
   if (normPath.startsWith('/uploads')) {
     return true;
+  }
+  
+    // Voucher public validation & list
+  if (normPath.startsWith('/vouchers/validate') || normPath.startsWith('/discounts/vouchers/validate')) {
+    return true;
+  }
+  if (m === 'GET') {
+    if (normPath === '/vouchers' || normPath === '/discounts' || normPath === '/discounts/vouchers') {
+      return true;
+    }
   }
 
   // 1. Auth public endpoints
@@ -190,6 +202,19 @@ export class ProxyController {
       return res.status(HttpStatus.NOT_FOUND).json({
         statusCode: HttpStatus.NOT_FOUND,
         message: `API Gateway: Service không tồn tại cho tiền tố '/${targetKey}'`,
+      });
+    }
+
+    // Chặn tuyệt đối client gọi các endpoint nội bộ của voucher qua Gateway
+    if (
+      cleanPath.includes('vouchers/claim') ||
+      cleanPath.includes('vouchers/release') ||
+      cleanPath.includes('discounts/vouchers/claim') ||
+      cleanPath.includes('discounts/vouchers/release')
+    ) {
+      return res.status(HttpStatus.FORBIDDEN).json({
+        statusCode: HttpStatus.FORBIDDEN,
+        message: 'Cấm truy cập: Endpoint nội bộ chỉ được phép gọi giữa các microservices',
       });
     }
 
