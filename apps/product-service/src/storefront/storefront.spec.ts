@@ -175,6 +175,23 @@ describe('StorefrontController', () => {
     expect(globalHome.sections.CSM_PICKS.id).toBe('s-global');
   });
 
+  it('home falls back to global section when branch section has no products', async () => {
+    sectionRepo.find.mockResolvedValue([
+      {
+        id: 's-global',
+        type: 'NEW_ARRIVALS',
+        branch_id: null,
+        is_active: true,
+        start_at: null,
+        end_at: null,
+        items: [{ sort_order: 0, note: null, product: { id: 'p1' } }],
+      },
+      { id: 's-br', type: 'NEW_ARRIVALS', branch_id: 'br-01', is_active: true, start_at: null, end_at: null, items: [] },
+    ]);
+    const home = await controller.getHome('br-01');
+    expect(home.sections.NEW_ARRIVALS.id).toBe('s-global');
+  });
+
   it('upsertSection validates type, duplicates and unknown products', async () => {
     await expect(controller.upsertSection(ADMIN, 'BOGUS', { items: [] } as any)).rejects.toThrow(
       BadRequestException,
