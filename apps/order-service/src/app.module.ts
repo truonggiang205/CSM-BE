@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { createEnvValidator } from '@csm/config';
 import { OrderController } from './order.controller';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -11,13 +12,18 @@ import { JwtModule } from '@nestjs/jwt';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '../../.env', // Load from root
+      envFilePath: ['../../.env', '.env'],
+      validate: createEnvValidator({
+        serviceName: 'order-service',
+        requiredDbUrl: 'ORDER_DB_URL',
+        requiredSecrets: ['JWT_SECRET', 'INTERNAL_SECRET'],
+      }),
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         type: 'mysql',
-        url: configService.get<string>('ORDER_DB_URL'),
+        url: configService.getOrThrow<string>('ORDER_DB_URL'),
         entities: [Order, OrderItem, OrderReview],
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
@@ -35,7 +41,7 @@ import { JwtModule } from '@nestjs/jwt';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'csm-super-secret-key-production-change-me',
+        secret: configService.getOrThrow<string>('JWT_SECRET'),
       }),
       inject: [ConfigService],
     }),

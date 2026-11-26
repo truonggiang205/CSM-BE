@@ -17,6 +17,7 @@ describe('Order Service Saga Rollback Test (Ep loi DB sau khi reserve-stock)', (
   let orderItemRepository: any;
 
   beforeEach(async () => {
+    process.env.INTERNAL_SECRET = 'unit-test-internal-secret-min-32-chars!!';
     orderRepository = {
       create: jest.fn().mockImplementation((dto) => ({ ...dto })),
       save: jest.fn(),

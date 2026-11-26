@@ -251,7 +251,7 @@ export class ProxyController {
       const token = authHeader.split(' ')[1];
       try {
         const payload = this.jwtService.verify(token, {
-          secret: process.env.JWT_SECRET || 'csm-super-secret-key-production-change-me',
+          secret: process.env.JWT_SECRET,
         });
 
         // Chỉ chấp nhận token loại access, từ chối refresh token dùng làm bearer auth

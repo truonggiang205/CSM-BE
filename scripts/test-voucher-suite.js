@@ -6,6 +6,11 @@ const mysql = require('mysql2/promise');
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:8000/api/v1';
+const SEED_PASSWORD = process.env.SEED_PASSWORD;
+if (!SEED_PASSWORD) {
+  console.error('❌ Thiếu biến môi trường bắt buộc: SEED_PASSWORD');
+  process.exit(1);
+}
 const shouldCleanup = process.argv.includes('--cleanup');
 
 async function run() {
@@ -26,7 +31,7 @@ async function run() {
   try {
     const adminLogin = await axios.post(`${BASE_URL}/auth/login`, {
       email: 'admin@csm.vn',
-      password: process.env.SEED_PASSWORD || 'Demo@123456',
+      password: SEED_PASSWORD,
     });
     adminToken = adminLogin.data.accessToken;
     console.log('✅ 0.1 Đăng nhập ADMIN thành công');
@@ -325,33 +330,40 @@ async function run() {
     console.log('🧹 BẮT ĐẦU DỌN DẸP DỮ LIỆU TEST VOUCHER (--cleanup)...');
     console.log('---------------------------------------------------------------');
 
-    const rawOrderUrl = process.env.ORDER_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_order';
+    const requireDbUrl = (name) => {
+      if (!process.env[name]) {
+        throw new Error(`Thiếu biến môi trường bắt buộc khi --cleanup: ${name}`);
+      }
+      return process.env[name];
+    };
+
+    const rawOrderUrl = requireDbUrl('ORDER_DB_URL');
     const parsedOrder = new URL(rawOrderUrl);
     const connOrder = await mysql.createConnection({
       host: parsedOrder.hostname || 'localhost',
       port: Number(parsedOrder.port) || 3306,
-      user: parsedOrder.username || 'root',
-      password: parsedOrder.password || 'rootpassword',
+      user: decodeURIComponent(parsedOrder.username || 'root'),
+      password: decodeURIComponent(parsedOrder.password || ''),
       database: parsedOrder.pathname.replace(/^\//, '') || 'csm_order',
     });
 
-    const rawDiscUrl = process.env.DISCOUNT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_discount';
+    const rawDiscUrl = requireDbUrl('DISCOUNT_DB_URL');
     const parsedDisc = new URL(rawDiscUrl);
     const connDisc = await mysql.createConnection({
       host: parsedDisc.hostname || 'localhost',
       port: Number(parsedDisc.port) || 3306,
-      user: parsedDisc.username || 'root',
-      password: parsedDisc.password || 'rootpassword',
+      user: decodeURIComponent(parsedDisc.username || 'root'),
+      password: decodeURIComponent(parsedDisc.password || ''),
       database: parsedDisc.pathname.replace(/^\//, '') || 'csm_discount',
     });
 
-    const rawAuthUrl = process.env.AUTH_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_auth';
+    const rawAuthUrl = requireDbUrl('AUTH_DB_URL');
     const parsedAuth = new URL(rawAuthUrl);
     const connAuth = await mysql.createConnection({
       host: parsedAuth.hostname || 'localhost',
       port: Number(parsedAuth.port) || 3306,
-      user: parsedAuth.username || 'root',
-      password: parsedAuth.password || 'rootpassword',
+      user: decodeURIComponent(parsedAuth.username || 'root'),
+      password: decodeURIComponent(parsedAuth.password || ''),
       database: parsedAuth.pathname.replace(/^\//, '') || 'csm_auth',
     });
 
