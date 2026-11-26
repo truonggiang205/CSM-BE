@@ -19,8 +19,6 @@ import { Combo } from './entities/combo.entity';
 import { ComboItem } from './entities/combo-item.entity';
 import { CreateComboDto } from './dto/create-combo.dto';
 import { UpdateComboDto } from './dto/update-combo.dto';
-import { GiftPromotion } from './entities/gift-promotion.entity';
-import { CreateGiftPromotionDto } from './dto/create-gift-promotion.dto';
 import { SpinHistory } from './entities/spin-history.entity';
 
 @Injectable()
@@ -39,8 +37,6 @@ export class DiscountService implements OnModuleInit {
     private readonly comboRepo: Repository<Combo>,
     @InjectRepository(ComboItem)
     private readonly comboItemRepo: Repository<ComboItem>,
-    @InjectRepository(GiftPromotion)
-    private readonly giftRepo: Repository<GiftPromotion>,
     @InjectRepository(SpinHistory)
     private readonly spinHistoryRepo: Repository<SpinHistory>,
   ) {}
@@ -327,65 +323,6 @@ export class DiscountService implements OnModuleInit {
           ci.product_image = mapped.image_url || ci.product_image || null;
           ci.original_price = mapped.base_price;
           await this.comboItemRepo.save(ci);
-        }
-      }
-    }
-
-    const giftCount = await this.giftRepo.count();
-    if (giftCount === 0) {
-      const now = new Date();
-      const nextYear = new Date();
-      nextYear.setFullYear(now.getFullYear() + 1);
-
-      await this.giftRepo.save([
-        this.giftRepo.create({
-          name: `Mua 2 ${pCoffee.name} tặng 1 ${pBread.name}`,
-          description: `Tặng ngay 1 ${pBread.name} khi mua từ 2 ${pCoffee.name}`,
-          rule_type: 'BUY_X_GET_Y',
-          buy_product_id: pCoffee.id,
-          buy_product_name: pCoffee.name,
-          buy_quantity: 2,
-          gift_product_id: pBread.id,
-          gift_product_name: pBread.name,
-          gift_quantity: 1,
-          max_gifts_per_order: 1,
-          start_date: now,
-          end_date: nextYear,
-          is_active: true,
-        }),
-        this.giftRepo.create({
-          name: `Đơn từ 100.000đ tặng ${pWater.name}`,
-          description: `Tặng miễn phí 1 ${pWater.name} cho đơn hàng từ 100.000đ`,
-          rule_type: 'MIN_ORDER_GIFT',
-          min_order_amount: 100000,
-          buy_quantity: 1,
-          gift_product_id: pWater.id,
-          gift_product_name: pWater.name,
-          gift_quantity: 1,
-          max_gifts_per_order: 1,
-          start_date: now,
-          end_date: nextYear,
-          is_active: true,
-        }),
-      ]);
-    } else {
-      const allGifts = await this.giftRepo.find();
-      for (const g of allGifts) {
-        let changed = false;
-        if (g.buy_product_id && legacyMap[g.buy_product_id]) {
-          const m = legacyMap[g.buy_product_id];
-          g.buy_product_id = m.id;
-          g.buy_product_name = m.name;
-          changed = true;
-        }
-        if (g.gift_product_id && legacyMap[g.gift_product_id]) {
-          const m = legacyMap[g.gift_product_id];
-          g.gift_product_id = m.id;
-          g.gift_product_name = m.name;
-          changed = true;
-        }
-        if (changed) {
-          await this.giftRepo.save(g);
         }
       }
     }
@@ -698,14 +635,25 @@ export class DiscountService implements OnModuleInit {
     return this.voucherRepo.save(voucher);
   }
 
+  private normalizeApplyDate(applyDate?: string | null): string | null {
+    if (!applyDate) return null;
+    const trimmed = String(applyDate).trim();
+    return trimmed ? trimmed.slice(0, 10) : null;
+  }
+
+  private toVnDateStr(date: Date = new Date()): string {
+    return new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
+  }
+
   private async validateNoOverlappingCampaign(
     startTime: string,
     endTime: string,
-    applyDate?: string,
+    applyDate?: string | null,
     excludeCampaignId?: string,
   ) {
     const s1 = startTime.length === 5 ? `${startTime}:00` : startTime;
     const e1 = endTime.length === 5 ? `${endTime}:00` : endTime;
+    const targetDate = this.normalizeApplyDate(applyDate);
 
     const allCampaigns = await this.campaignRepo.find({
       where: { is_active: true },
@@ -714,8 +662,9 @@ export class DiscountService implements OnModuleInit {
     for (const c of allCampaigns) {
       if (excludeCampaignId && c.id === excludeCampaignId) continue;
 
+      const existingDate = this.normalizeApplyDate(c.apply_date);
       const dateOverlap =
-        !applyDate || !c.apply_date || applyDate === c.apply_date;
+        !targetDate || !existingDate || targetDate === existingDate;
 
       if (!dateOverlap) continue;
 
@@ -733,17 +682,18 @@ export class DiscountService implements OnModuleInit {
   }
 
   async createFlashSale(dto: CreateFlashSaleDto) {
+    const normalizedDate = this.normalizeApplyDate(dto.apply_date);
     if (dto.is_active !== false) {
       await this.validateNoOverlappingCampaign(
         dto.start_time,
         dto.end_time,
-        dto.apply_date,
+        normalizedDate,
       );
     }
 
     const campaign = this.campaignRepo.create({
       name: dto.name,
-      apply_date: dto.apply_date,
+      apply_date: normalizedDate as any,
       start_time: dto.start_time,
       end_time: dto.end_time,
       is_active: dto.is_active !== undefined ? dto.is_active : true,
@@ -791,7 +741,10 @@ export class DiscountService implements OnModuleInit {
 
     const targetStart = dto.start_time !== undefined ? dto.start_time : campaign.start_time;
     const targetEnd = dto.end_time !== undefined ? dto.end_time : campaign.end_time;
-    const targetDate = dto.apply_date !== undefined ? dto.apply_date : campaign.apply_date;
+    const targetDate =
+      dto.apply_date !== undefined
+        ? this.normalizeApplyDate(dto.apply_date)
+        : this.normalizeApplyDate(campaign.apply_date);
     const targetActive = dto.is_active !== undefined ? dto.is_active : campaign.is_active;
 
     if (targetActive) {
@@ -804,7 +757,7 @@ export class DiscountService implements OnModuleInit {
     }
 
     if (dto.name !== undefined) campaign.name = dto.name;
-    if (dto.apply_date !== undefined) campaign.apply_date = dto.apply_date;
+    if (dto.apply_date !== undefined) campaign.apply_date = targetDate as any;
     if (dto.start_time !== undefined) campaign.start_time = dto.start_time;
     if (dto.end_time !== undefined) campaign.end_time = dto.end_time;
     if (dto.is_active !== undefined) campaign.is_active = dto.is_active;
@@ -875,10 +828,32 @@ export class DiscountService implements OnModuleInit {
     const currentTimeStr = `${currentHours}:${currentMinutes}:${currentSeconds}`;
     const todayStr = vnDate.toISOString().split('T')[0];
 
-    const validCampaigns = campaigns.filter((c) => {
-      if (!c.apply_date) return true;
-      return c.apply_date.slice(0, 10) === todayStr;
-    });
+    // Tự động reset sold_count sang 0 khi qua ngày mới cho các ca "Lặp lại mỗi ngày" (apply_date = null)
+    for (const c of campaigns) {
+      if (!this.normalizeApplyDate(c.apply_date) && c.items && c.items.length > 0) {
+        const lastUpdatedVn = c.updated_at ? this.toVnDateStr(new Date(c.updated_at)) : todayStr;
+        if (lastUpdatedVn < todayStr && c.items.some((i) => Number(i.sold_count) > 0)) {
+          for (const item of c.items) {
+            item.sold_count = 0;
+          }
+          await this.itemRepo.save(c.items);
+          await this.campaignRepo.update(c.id, { updated_at: new Date() });
+        }
+      }
+    }
+
+    const validCampaigns = campaigns
+      .filter((c) => {
+        const d = this.normalizeApplyDate(c.apply_date);
+        if (!d) return true;
+        return d === todayStr;
+      })
+      .sort((a, b) => {
+        const aSpecific = this.normalizeApplyDate(a.apply_date) ? 0 : 1;
+        const bSpecific = this.normalizeApplyDate(b.apply_date) ? 0 : 1;
+        if (aSpecific !== bSpecific) return aSpecific - bSpecific;
+        return a.start_time.localeCompare(b.start_time);
+      });
 
     if (validCampaigns.length === 0) {
       return { status: 'NONE', campaign: null, items: [] };
@@ -1197,113 +1172,6 @@ export class DiscountService implements OnModuleInit {
       rolledBackCount++;
     }
     return { success: true, rolledBack: rolledBackCount };
-  }
-
-  // ==================== BUY X GET Y / GIFT PROMOTIONS ====================
-
-  async getAllGiftPromotions(): Promise<GiftPromotion[]> {
-    return this.giftRepo.find({ order: { created_at: 'DESC' } });
-  }
-
-  async getPublicGiftPromotions(): Promise<GiftPromotion[]> {
-    const now = new Date();
-    const list = await this.giftRepo.find({
-      where: { is_active: true },
-      order: { created_at: 'DESC' },
-    });
-    return list.filter((g) => {
-      if (g.start_date && new Date(g.start_date) > now) return false;
-      if (g.end_date && new Date(g.end_date) < now) return false;
-      return true;
-    });
-  }
-
-  async createGiftPromotion(dto: CreateGiftPromotionDto): Promise<GiftPromotion> {
-    if (dto.rule_type === 'BUY_X_GET_Y' && !dto.buy_product_id) {
-      throw new BadRequestException('Chương trình Mua X Tặng Y cần chọn sản phẩm điều kiện');
-    }
-    if (dto.rule_type === 'MIN_ORDER_GIFT' && (!dto.min_order_amount || dto.min_order_amount <= 0)) {
-      throw new BadRequestException('Chương trình Quà tặng theo đơn cần nhập giá trị đơn tối thiểu > 0');
-    }
-    const entity = this.giftRepo.create({
-      name: dto.name.trim(),
-      description: dto.description?.trim() || null,
-      rule_type: dto.rule_type,
-      buy_product_id: dto.buy_product_id || null,
-      buy_product_name: dto.buy_product_name || null,
-      buy_quantity: Math.max(1, Number(dto.buy_quantity) || 1),
-      min_order_amount: dto.min_order_amount ?? null,
-      gift_product_id: dto.gift_product_id,
-      gift_product_name: dto.gift_product_name || null,
-      gift_quantity: Math.max(1, Number(dto.gift_quantity) || 1),
-      max_gifts_per_order: Math.max(1, Number(dto.max_gifts_per_order) || 1),
-      start_date: dto.start_date ? new Date(dto.start_date) : null,
-      end_date: dto.end_date ? new Date(dto.end_date) : null,
-      is_active: dto.is_active !== undefined ? dto.is_active : true,
-    });
-    return this.giftRepo.save(entity);
-  }
-
-  async toggleGiftPromotion(id: string): Promise<GiftPromotion> {
-    const promo = await this.giftRepo.findOne({ where: { id } });
-    if (!promo) throw new NotFoundException('Không tìm thấy chương trình quà tặng');
-    promo.is_active = !promo.is_active;
-    return this.giftRepo.save(promo);
-  }
-
-  async deleteGiftPromotion(id: string): Promise<{ success: boolean }> {
-    const promo = await this.giftRepo.findOne({ where: { id } });
-    if (!promo) throw new NotFoundException('Không tìm thấy chương trình quà tặng');
-    await this.giftRepo.remove(promo);
-    return { success: true };
-  }
-
-  async evaluateGiftPromotions(
-    items: Array<{ productId: string; quantity: number }>,
-    subtotal: number,
-  ) {
-    const activePromos = await this.getPublicGiftPromotions();
-    const itemQtyMap = new Map<string, number>();
-    for (const i of items || []) {
-      itemQtyMap.set(String(i.productId), (itemQtyMap.get(String(i.productId)) || 0) + (Number(i.quantity) || 0));
-    }
-
-    const qualifiedGifts: Array<{
-      promotionId: string;
-      promotionName: string;
-      productId: string;
-      productName: string;
-      quantity: number;
-    }> = [];
-
-    for (const promo of activePromos) {
-      let grantTimes = 0;
-      if (promo.rule_type === 'BUY_X_GET_Y' && promo.buy_product_id) {
-        const boughtQty = itemQtyMap.get(String(promo.buy_product_id)) || 0;
-        if (boughtQty >= promo.buy_quantity) {
-          grantTimes = Math.min(
-            Math.floor(boughtQty / promo.buy_quantity),
-            Math.max(1, promo.max_gifts_per_order || 1),
-          );
-        }
-      } else if (promo.rule_type === 'MIN_ORDER_GIFT' && promo.min_order_amount) {
-        if (Number(subtotal) >= Number(promo.min_order_amount)) {
-          grantTimes = 1;
-        }
-      }
-
-      if (grantTimes > 0) {
-        qualifiedGifts.push({
-          promotionId: promo.id,
-          promotionName: promo.name,
-          productId: promo.gift_product_id,
-          productName: promo.gift_product_name || promo.gift_product_id,
-          quantity: grantTimes * Math.max(1, promo.gift_quantity || 1),
-        });
-      }
-    }
-
-    return qualifiedGifts;
   }
 
   // ==================== SPIN WHEEL API ====================
