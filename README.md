@@ -44,8 +44,14 @@ Toàn bộ hệ thống (gồm MySQL, 7 Microservices Backend và Frontend) đư
 
 ### Bước 1: Tạo file cấu hình môi trường
 ```bash
-# Tại thư mục gốc CSM-BE
+# Cách 1 (Khuyến nghị): Tự động tạo .env từ .env.example và sinh secret ngẫu nhiên
+npm run env:init
+
+# Cách 2: Sao chép thủ công rồi tự điền các giá trị CHANGE_ME_*
 cp .env.example .env
+
+# Kiểm tra cấu hình hợp lệ (không in giá trị secret)
+npm run env:check
 ```
 
 ### Bước 2: Khởi động toàn bộ stack
@@ -60,41 +66,44 @@ docker compose ps
 ```
 *(Chờ các service chuyển sang trạng thái `healthy` qua Docker healthchecks tích hợp).*
 
-> **Lưu ý đối với Docker Volume MySQL đã tồn tại:**
-> File `init.sql` chỉ tự động thực thi khi khởi tạo volume MySQL lần đầu tiên. Nếu hệ thống đã có sẵn volume `csm-be_mysql_data` từ trước khi bổ sung `discount-service`, cần chủ động tạo database `csm_discount` mà không làm mất dữ liệu cũ bằng lệnh sau:
-> ```bash
-> docker compose exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-rootpassword}" mysql mysql -uroot -e "CREATE DATABASE IF NOT EXISTS csm_discount CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON csm_discount.* TO 'root'@'%'; FLUSH PRIVILEGES;"
-> ```
-
 ---
 
-## 🔑 3. Danh Sách Biến Môi Trường (`.env.example`)
+## 🔑 3. Cấu Hình Môi Trường
 
-Bảng dưới đây mô tả chi tiết các biến cấu hình trong `.env`:
+> **Quy tắc bảo mật:** **Không commit `.env` / `.env.cloud` lên Git, không dán nội dung `.env` lên chat hay issue.** Các service NestJS sẽ tự động dừng (fail-fast) khi khởi động nếu thiếu biến bắt buộc hoặc secret dưới 32 ký tự.
 
-| Tên biến | Giá trị mẫu | Mục đích & Ý nghĩa |
-| :--- | :--- | :--- |
-| `NODE_ENV` | `development` / `production` | Môi trường chạy hệ thống (dev kích hoạt Swagger docs) |
-| `PORT` | `8000` | Cổng lắng nghe chính của API Gateway |
-| `AUTH_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_auth` | Chuỗi kết nối Database MySQL cho Auth Service |
-| `PRODUCT_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_product` | Chuỗi kết nối Database MySQL cho Product Service |
-| `INVENTORY_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_inventory` | Chuỗi kết nối Database MySQL cho Inventory Service |
-| `ORDER_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_order` | Chuỗi kết nối Database MySQL cho Order Service |
-| `DISCOUNT_DB_URL` | `mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/csm_discount` | Chuỗi kết nối Database MySQL cho Discount Service |
-| `JWT_SECRET` | Khóa bí mật min 32 ký tự | Khóa bí mật dùng để ký và xác thực Access Token JWT |
-| `JWT_REFRESH_SECRET` | Khóa bí mật min 32 ký tự | Khóa bí mật dùng để ký và xác thực Refresh Token JWT |
-| `INTERNAL_SECRET` | Khóa bí mật nội bộ | Khóa bảo mật giao tiếp nội bộ giữa các microservices |
-| `AUTH_SERVICE_URL` | `http://auth-service:3001` | URL nội bộ của Auth Service cho API Gateway |
-| `PRODUCT_SERVICE_URL` | `http://product-service:3002` | URL nội bộ của Product Service cho API Gateway |
-| `INVENTORY_SERVICE_URL` | `http://inventory-service:3003` | URL nội bộ của Inventory Service cho API Gateway |
-| `ORDER_SERVICE_URL` | `http://order-service:3004` | URL nội bộ của Order Service cho API Gateway |
-| `PAYMENT_SERVICE_URL` | `http://payment-service:3005` | URL nội bộ của Payment Service cho API Gateway |
-| `NOTIFICATION_SERVICE_URL` | `http://notification-service:3006` | URL nội bộ của Notification Service cho API Gateway |
-| `DISCOUNT_SERVICE_URL` | `http://discount-service:3007` | URL nội bộ của Discount Service cho API Gateway và Order Service |
-| `PAYMENT_SIMULATION` | `true` | Cờ kích hoạt/vô hiệu tính năng mô phỏng thanh toán trực tuyến |
-| `PAYMENT_SIMULATION_SECRET`| Khóa bí mật ký token thanh toán | Khóa ký số token JWT cho link mô phỏng thanh toán 10 phút |
-| `PUBLIC_GATEWAY_URL` | `http://localhost:8000` | URL công khai của API Gateway dùng cho redirect thanh toán |
-| `FRONTEND_URL` | `http://localhost:3000` | URL của Web Frontend client |
+### 3.1. Các nhóm biến trong `.env.example`
+1. **Chung:** `NODE_ENV`, các cổng (`PORT`, `AUTH_PORT`, `PRODUCT_PORT`, `INVENTORY_PORT`, `ORDER_PORT`, `PAYMENT_PORT`, `NOTIFICATION_PORT`, `DISCOUNT_PORT`), `UPLOAD_DIR`.
+2. **MySQL & Chuỗi kết nối:** `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, cùng `AUTH_DB_URL`, `PRODUCT_DB_URL`, `INVENTORY_DB_URL`, `ORDER_DB_URL`, `DISCOUNT_DB_URL`. (Với cloud/SSL, xem `.env.cloud.example` — **tuyệt đối không dùng chung secret với local** và **không chạy `seed --reset`**).
+3. **JWT & Bảo mật nội bộ (tối thiểu 32 ký tự):** `JWT_SECRET`, `JWT_REFRESH_SECRET`, `INTERNAL_SECRET`.
+4. **URL các service:** `*_SERVICE_URL`, `PUBLIC_GATEWAY_URL`, `API_GATEWAY_URL`, `FRONTEND_URL`.
+5. **Discount & Thanh toán mô phỏng:** `DISCOUNT_SERVICE_URL`, `PAYMENT_SIMULATION_SECRET`.
+6. **Biến chỉ dùng cho test / cờ nguy hiểm (mặc định `false`):**
+   - `DB_SYNC`: chỉ bật `true` ở local dev lần đầu để TypeORM tạo bảng; tắt `false` trên production.
+   - `ENABLE_SWAGGER`: chỉ bật `true` ở local dev/staging; tắt `false` trên production.
+   - `PAYMENT_SIMULATION`: chỉ bật `true` ở môi trường demo/test; tắt `false` trên production.
+   - `ENABLE_TEST_DELAY`: chỉ bật `true` khi chạy test Saga timeout 5s.
+   - `SEED_PASSWORD`, `TEST_API_URL`, `TEST_CLEANUP`, `TEST_*_DB_URL`: chỉ dùng cho seed/test.
+
+### 3.2. Cách xoay vòng (Rotate) Secret
+1. Sinh chuỗi ngẫu nhiên mới (>= 32 ký tự, ví dụ: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
+2. Cập nhật biến tương ứng (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `INTERNAL_SECRET`, `PAYMENT_SIMULATION_SECRET`) trong `.env` / `.env.cloud`.
+3. Khởi động lại các container liên quan (`docker compose up -d --force-recreate`). Lưu ý: đổi `JWT_SECRET` sẽ làm các access token cũ hết hiệu lực.
+
+### 3.3. Cảnh báo quan trọng về Docker Volume MySQL
+- **Mật khẩu root MySQL (`MYSQL_ROOT_PASSWORD`) chỉ có hiệu lực ở lần đầu tiên tạo volume `mysql_data`.** Việc đổi `MYSQL_ROOT_PASSWORD` trong `.env` sau đó **không** tự đổi mật khẩu của MySQL đã lưu trong volume.
+  - Cách xử lý khi cần đổi mật khẩu trên volume đang có dữ liệu:
+    ```bash
+    docker compose exec mysql mysql -uroot -p -e "ALTER USER 'root'@'%' IDENTIFIED BY '<NEW_PASSWORD>'; ALTER USER 'root'@'localhost' IDENTIFIED BY '<NEW_PASSWORD>'; FLUSH PRIVILEGES;"
+    ```
+  - Nếu chỉ là dữ liệu demo và muốn tạo lại volume sạch từ đầu:
+    ```bash
+    docker compose down -v && docker compose up -d
+    ```
+- **Lưu ý với volume đã tồn tại thiếu database `csm_discount`:** File `init.sql` chỉ chạy lần đầu tạo volume. Nếu volume cũ chưa có `csm_discount`, tạo thủ công mà không mất dữ liệu cũ:
+  ```bash
+  docker compose exec mysql mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS csm_discount CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON csm_discount.* TO 'root'@'%'; FLUSH PRIVILEGES;"
+  ```
 
 ---
 
