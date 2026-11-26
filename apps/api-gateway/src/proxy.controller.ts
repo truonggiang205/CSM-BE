@@ -21,6 +21,7 @@ const SERVICE_MAP: Record<string, string> = {
   'flash-sales': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
   'today-deals': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
   combos: process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
+  'gift-promotions': process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007',
 };
 
 function isPublicEndpoint(method: string, pathUrl: string): boolean {
@@ -42,7 +43,7 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
   }
   
     // Voucher public validation & list
-  if (normPath.startsWith('/vouchers/validate') || normPath.startsWith('/discounts/vouchers/validate')) {
+  if (normPath.startsWith('/vouchers/validate') || normPath.startsWith('/discounts/vouchers/validate') || normPath.startsWith('/gift-promotions/evaluate') || normPath.startsWith('/discounts/gift-promotions/evaluate')) {
     return true;
   }
   if (m === 'GET') {
@@ -52,7 +53,8 @@ function isPublicEndpoint(method: string, pathUrl: string): boolean {
       normPath === '/discounts/vouchers' ||
       normPath.startsWith('/flash-sales') ||
       normPath.startsWith('/today-deals') ||
-      normPath.startsWith('/combos')
+      normPath.startsWith('/combos') ||
+      normPath.startsWith('/gift-promotions')
     ) {
       return true;
     }
