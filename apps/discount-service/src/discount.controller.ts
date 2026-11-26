@@ -6,6 +6,7 @@ import { CreateFlashSaleDto } from './dto/create-flash-sale.dto';
 import { UpdateFlashSaleDto } from './dto/update-flash-sale.dto';
 import { CreateComboDto } from './dto/create-combo.dto';
 import { UpdateComboDto } from './dto/update-combo.dto';
+import { CreateGiftPromotionDto } from './dto/create-gift-promotion.dto';
 
 const getInternalSecret = () => process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token';
 
@@ -206,5 +207,38 @@ export class DiscountController {
   @Post(['combos/rollback-purchase', 'discounts/combos/rollback-purchase'])
   rollbackComboPurchases(@Body('combos') combos: Array<{ comboId: string; quantity: number }>) {
     return this.discountService.rollbackComboPurchases(combos || []);
+  }
+
+  // ==================== BUY X GET Y / GIFT PROMOTIONS ====================
+
+  @Get(['gift-promotions', 'discounts/gift-promotions'])
+  getGiftPromotions(@Query('all') all?: string) {
+    if (all === 'true') {
+      return this.discountService.getAllGiftPromotions();
+    }
+    return this.discountService.getPublicGiftPromotions();
+  }
+
+  @Post(['gift-promotions', 'discounts/gift-promotions'])
+  createGiftPromotion(@Body() dto: CreateGiftPromotionDto) {
+    return this.discountService.createGiftPromotion(dto);
+  }
+
+  @Patch(['gift-promotions/:id/toggle', 'discounts/gift-promotions/:id/toggle'])
+  toggleGiftPromotion(@Param('id') id: string) {
+    return this.discountService.toggleGiftPromotion(id);
+  }
+
+  @Delete(['gift-promotions/:id', 'discounts/gift-promotions/:id'])
+  deleteGiftPromotion(@Param('id') id: string) {
+    return this.discountService.deleteGiftPromotion(id);
+  }
+
+  @Post(['gift-promotions/evaluate', 'discounts/gift-promotions/evaluate'])
+  evaluateGiftPromotions(
+    @Body('items') items: Array<{ productId: string; quantity: number }>,
+    @Body('subtotal') subtotal: number,
+  ) {
+    return this.discountService.evaluateGiftPromotions(items || [], Number(subtotal) || 0);
   }
 }

@@ -18,6 +18,8 @@ import { Combo } from './entities/combo.entity';
 import { ComboItem } from './entities/combo-item.entity';
 import { CreateComboDto } from './dto/create-combo.dto';
 import { UpdateComboDto } from './dto/update-combo.dto';
+import { GiftPromotion } from './entities/gift-promotion.entity';
+import { CreateGiftPromotionDto } from './dto/create-gift-promotion.dto';
 
 @Injectable()
 export class DiscountService implements OnModuleInit {
@@ -35,6 +37,8 @@ export class DiscountService implements OnModuleInit {
     private readonly comboRepo: Repository<Combo>,
     @InjectRepository(ComboItem)
     private readonly comboItemRepo: Repository<ComboItem>,
+    @InjectRepository(GiftPromotion)
+    private readonly giftRepo: Repository<GiftPromotion>,
   ) {}
 
   async onModuleInit() {
@@ -230,6 +234,45 @@ export class DiscountService implements OnModuleInit {
                 quantity: 1,
               }),
             ],
+          }),
+        ]);
+      }
+
+      const giftCount = await this.giftRepo.count();
+      if (giftCount === 0) {
+        const now = new Date();
+        const nextYear = new Date();
+        nextYear.setFullYear(now.getFullYear() + 1);
+
+        await this.giftRepo.save([
+          this.giftRepo.create({
+            name: 'Mua 2 Cà phê sữa đá tặng 1 Bánh mì',
+            description: 'Tặng ngay 1 Bánh mì kẹp thịt nguội khi mua từ 2 Cà phê sữa đá pha sẵn',
+            rule_type: 'BUY_X_GET_Y',
+            buy_product_id: 'p5',
+            buy_product_name: 'Cà phê sữa đá pha sẵn',
+            buy_quantity: 2,
+            gift_product_id: 'p2',
+            gift_product_name: 'Bánh mì kẹp thịt nguội',
+            gift_quantity: 1,
+            max_gifts_per_order: 1,
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
+          }),
+          this.giftRepo.create({
+            name: 'Đơn từ 100.000đ tặng Nước khoáng',
+            description: 'Tặng miễn phí 1 Nước khoáng Lavie 500ml cho đơn hàng từ 100.000đ',
+            rule_type: 'MIN_ORDER_GIFT',
+            min_order_amount: 100000,
+            buy_quantity: 1,
+            gift_product_id: 'p1',
+            gift_product_name: 'Nước khoáng Lavie 500ml',
+            gift_quantity: 1,
+            max_gifts_per_order: 1,
+            start_date: now,
+            end_date: nextYear,
+            is_active: true,
           }),
         ]);
       }
@@ -1020,5 +1063,112 @@ export class DiscountService implements OnModuleInit {
       rolledBackCount++;
     }
     return { success: true, rolledBack: rolledBackCount };
+  }
+
+  // ==================== BUY X GET Y / GIFT PROMOTIONS ====================
+
+  async getAllGiftPromotions(): Promise<GiftPromotion[]> {
+    return this.giftRepo.find({ order: { created_at: 'DESC' } });
+  }
+
+  async getPublicGiftPromotions(): Promise<GiftPromotion[]> {
+    const now = new Date();
+    const list = await this.giftRepo.find({
+      where: { is_active: true },
+      order: { created_at: 'DESC' },
+    });
+    return list.filter((g) => {
+      if (g.start_date && new Date(g.start_date) > now) return false;
+      if (g.end_date && new Date(g.end_date) < now) return false;
+      return true;
+    });
+  }
+
+  async createGiftPromotion(dto: CreateGiftPromotionDto): Promise<GiftPromotion> {
+    if (dto.rule_type === 'BUY_X_GET_Y' && !dto.buy_product_id) {
+      throw new BadRequestException('Chương trình Mua X Tặng Y cần chọn sản phẩm điều kiện');
+    }
+    if (dto.rule_type === 'MIN_ORDER_GIFT' && (!dto.min_order_amount || dto.min_order_amount <= 0)) {
+      throw new BadRequestException('Chương trình Quà tặng theo đơn cần nhập giá trị đơn tối thiểu > 0');
+    }
+    const entity = this.giftRepo.create({
+      name: dto.name.trim(),
+      description: dto.description?.trim() || null,
+      rule_type: dto.rule_type,
+      buy_product_id: dto.buy_product_id || null,
+      buy_product_name: dto.buy_product_name || null,
+      buy_quantity: Math.max(1, Number(dto.buy_quantity) || 1),
+      min_order_amount: dto.min_order_amount ?? null,
+      gift_product_id: dto.gift_product_id,
+      gift_product_name: dto.gift_product_name || null,
+      gift_quantity: Math.max(1, Number(dto.gift_quantity) || 1),
+      max_gifts_per_order: Math.max(1, Number(dto.max_gifts_per_order) || 1),
+      start_date: dto.start_date ? new Date(dto.start_date) : null,
+      end_date: dto.end_date ? new Date(dto.end_date) : null,
+      is_active: dto.is_active !== undefined ? dto.is_active : true,
+    });
+    return this.giftRepo.save(entity);
+  }
+
+  async toggleGiftPromotion(id: string): Promise<GiftPromotion> {
+    const promo = await this.giftRepo.findOne({ where: { id } });
+    if (!promo) throw new NotFoundException('Không tìm thấy chương trình quà tặng');
+    promo.is_active = !promo.is_active;
+    return this.giftRepo.save(promo);
+  }
+
+  async deleteGiftPromotion(id: string): Promise<{ success: boolean }> {
+    const promo = await this.giftRepo.findOne({ where: { id } });
+    if (!promo) throw new NotFoundException('Không tìm thấy chương trình quà tặng');
+    await this.giftRepo.remove(promo);
+    return { success: true };
+  }
+
+  async evaluateGiftPromotions(
+    items: Array<{ productId: string; quantity: number }>,
+    subtotal: number,
+  ) {
+    const activePromos = await this.getPublicGiftPromotions();
+    const itemQtyMap = new Map<string, number>();
+    for (const i of items || []) {
+      itemQtyMap.set(String(i.productId), (itemQtyMap.get(String(i.productId)) || 0) + (Number(i.quantity) || 0));
+    }
+
+    const qualifiedGifts: Array<{
+      promotionId: string;
+      promotionName: string;
+      productId: string;
+      productName: string;
+      quantity: number;
+    }> = [];
+
+    for (const promo of activePromos) {
+      let grantTimes = 0;
+      if (promo.rule_type === 'BUY_X_GET_Y' && promo.buy_product_id) {
+        const boughtQty = itemQtyMap.get(String(promo.buy_product_id)) || 0;
+        if (boughtQty >= promo.buy_quantity) {
+          grantTimes = Math.min(
+            Math.floor(boughtQty / promo.buy_quantity),
+            Math.max(1, promo.max_gifts_per_order || 1),
+          );
+        }
+      } else if (promo.rule_type === 'MIN_ORDER_GIFT' && promo.min_order_amount) {
+        if (Number(subtotal) >= Number(promo.min_order_amount)) {
+          grantTimes = 1;
+        }
+      }
+
+      if (grantTimes > 0) {
+        qualifiedGifts.push({
+          promotionId: promo.id,
+          promotionName: promo.name,
+          productId: promo.gift_product_id,
+          productName: promo.gift_product_name || promo.gift_product_id,
+          quantity: grantTimes * Math.max(1, promo.gift_quantity || 1),
+        });
+      }
+    }
+
+    return qualifiedGifts;
   }
 }
