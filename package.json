@@ -16,6 +16,8 @@
     "seed:demo": "ts-node scripts/seed-data.ts",
     "lint:eslint": "eslint \"apps/**/*.ts\" \"libs/**/*.ts\"",
     "lint:report": "eslint \"apps/**/*.ts\" \"libs/**/*.ts\" --format stylish",
+    "env:init": "node scripts/env-init.js",
+    "env:check": "node scripts/env-check.js",
     "test": "jest --runInBand"
   },
   "keywords": [

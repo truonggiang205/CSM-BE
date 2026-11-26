@@ -10,8 +10,12 @@ function uuid() {
 async function seedInventoryStatuses() {
   console.log('=== BẮT ĐẦU SEED TRẠNG THÁI SẮP HẾT VÀ ĐÃ HẾT VÀO CSDL TỒN KHO ===\n');
 
-  const invUrl = process.env.INVENTORY_DB_URL || 'mysql://root:12345@localhost:3306/csm_inventory';
-  const prodUrl = process.env.PRODUCT_DB_URL || 'mysql://root:12345@localhost:3306/csm_product';
+  const invUrl = process.env.INVENTORY_DB_URL;
+  const prodUrl = process.env.PRODUCT_DB_URL;
+  if (!invUrl || !prodUrl) {
+    console.error('❌ Thiếu biến môi trường bắt buộc: INVENTORY_DB_URL hoặc PRODUCT_DB_URL');
+    process.exit(1);
+  }
 
   const invConn = await mysql.createConnection(invUrl);
   const prodConn = await mysql.createConnection(prodUrl);

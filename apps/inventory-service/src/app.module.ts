@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { createEnvValidator } from '@csm/config';
 import { InventoryController } from './inventory.controller';
 import { Branch } from './entities/branch.entity';
 import { Stock } from './entities/stock.entity';
@@ -12,7 +13,12 @@ import { BranchController } from './branch.controller';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '../../.env', // Load from root
+      envFilePath: ['../../.env', '.env'],
+      validate: createEnvValidator({
+        serviceName: 'inventory-service',
+        requiredDbUrl: 'INVENTORY_DB_URL',
+        requiredSecrets: ['INTERNAL_SECRET'],
+      }),
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
