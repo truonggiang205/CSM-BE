@@ -15,7 +15,7 @@ export class AuthGuard implements CanActivate {
     const token = authHeader.split(' ')[1];
     try {
       const payload = this.jwtService.verify(token, {
-        secret: process.env.JWT_SECRET || 'csm-super-secret-key-production-change-me',
+        secret: process.env.JWT_SECRET,
       });
 
       // Từ chối refresh token khi dùng làm access bearer token
