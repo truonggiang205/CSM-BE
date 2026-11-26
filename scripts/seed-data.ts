@@ -603,8 +603,18 @@ async function runSeed() {
     console.error('❌ Thiếu biến môi trường bắt buộc: SEED_PASSWORD');
     process.exit(1);
   }
+  // Mật khẩu riêng từng vai trò (không bắt buộc). Nếu không khai báo sẽ dùng SEED_PASSWORD.
+  // Phải khớp với apps/auth-service/src/seed.ts để `npm run seed` không ghi đè mật khẩu.
+  const rolePasswords: Record<string, string> = {
+    [UserRole.ADMIN]: process.env.SEED_ADMIN_PASSWORD || seedPassword,
+    [UserRole.BRANCH_MANAGER]: process.env.SEED_MANAGER_PASSWORD || seedPassword,
+    [UserRole.CUSTOMER]: process.env.SEED_CUSTOMER_PASSWORD || seedPassword,
+  };
   const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash(seedPassword, salt);
+  const roleHashes: Record<string, string> = {};
+  for (const [role, pwd] of Object.entries(rolePasswords)) {
+    roleHashes[role] = await bcrypt.hash(pwd, salt);
+  }
 
   // --- BƯỚC 1: SEED TÀI KHOẢN NGƯỜI DÙNG (AUTH DB) ---
   console.log('📌 Bước 1: Khởi tạo/Cập nhật Tài khoản người dùng (Auth DB)...');
@@ -623,6 +633,7 @@ async function runSeed() {
   let usersUpdated = 0;
 
   for (const u of seedUsersList) {
+    const passwordHash = roleHashes[u.role];
     let existing = await userRepo.findOne({ where: { email: u.email } });
     if (existing) {
       existing.password_hash = passwordHash;
