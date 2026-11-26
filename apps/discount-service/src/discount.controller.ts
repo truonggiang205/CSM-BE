@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Body, Param, Patch, Query, Req, ForbiddenException } from '@nestjs/common';
+import { requireEnv } from '@csm/config';
 import { DiscountService } from './discount.service';
 import { ValidateVoucherDto } from './dto/validate-voucher.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 
-const getInternalSecret = () => process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token';
+const getInternalSecret = () => requireEnv('INTERNAL_SECRET');
 
 @Controller()
 export class DiscountController {

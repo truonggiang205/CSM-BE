@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { createEnvValidator } from '@csm/config';
 import { DiscountController } from './discount.controller';
 import { DiscountService } from './discount.service';
 import { Voucher } from './entities/voucher.entity';
@@ -8,12 +9,20 @@ import { VoucherUsage } from './entities/voucher-usage.entity';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['../../.env', '.env'],
+      validate: createEnvValidator({
+        serviceName: 'discount-service',
+        requiredDbUrl: 'DISCOUNT_DB_URL',
+        requiredSecrets: ['INTERNAL_SECRET'],
+      }),
+    }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
         type: 'mysql',
-        url: config.get<string>('DISCOUNT_DB_URL') || 'mysql://root:rootpassword@localhost:3306/csm_discount',
+        url: config.getOrThrow<string>('DISCOUNT_DB_URL'),
         entities: [Voucher, VoucherUsage],
         synchronize:
           config.get<string>('NODE_ENV') === 'development' ||

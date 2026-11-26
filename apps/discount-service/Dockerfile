@@ -37,6 +37,7 @@ COPY apps/discount-service/package*.json ./apps/discount-service/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 COPY --from=builder /usr/src/app/apps/discount-service/dist ./dist
+COPY --from=builder /usr/src/app/libs/config ./node_modules/@csm/config
 
 EXPOSE 3007
 CMD ["node", "dist/main.js"]

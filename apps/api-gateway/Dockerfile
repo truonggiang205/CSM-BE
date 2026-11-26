@@ -41,6 +41,7 @@ COPY apps/product-service/package*.json ./apps/product-service/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 COPY --from=builder /usr/src/app/apps/api-gateway/dist ./dist
+COPY --from=builder /usr/src/app/libs/config ./node_modules/@csm/config
 
 EXPOSE 8000
 
