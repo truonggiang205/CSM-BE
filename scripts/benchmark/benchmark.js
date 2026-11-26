@@ -31,7 +31,11 @@ const dotenv = require('dotenv');
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:8000/api/v1';
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-access-token-key-32chars';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('❌ Thiếu biến môi trường bắt buộc: JWT_SECRET');
+  process.exit(1);
+}
 
 // Helper tính toán phân vị độ trễ (Percentile: p50, p90, p95, p99)
 function calculatePercentiles(latencies) {

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { createEnvValidator } from '@csm/config';
 import { ProductController } from './product.controller';
 import { Product } from './entities/product.entity';
 import { Category } from './entities/category.entity';
@@ -9,7 +10,11 @@ import { Category } from './entities/category.entity';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '../../.env', // Load from root
+      envFilePath: ['../../.env', '.env'],
+      validate: createEnvValidator({
+        serviceName: 'product-service',
+        requiredDbUrl: 'PRODUCT_DB_URL',
+      }),
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

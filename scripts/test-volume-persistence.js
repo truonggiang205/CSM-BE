@@ -1,6 +1,8 @@
 const axios = require('axios');
 const crypto = require('crypto');
+const path = require('path');
 const { execSync } = require('child_process');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 async function testPersistence() {
   console.log('======================================================');
@@ -8,14 +10,19 @@ async function testPersistence() {
   console.log('   (DOCKER COMPOSE DOWN -> DOCKER COMPOSE UP)');
   console.log('======================================================\n');
 
-  const GATEWAY_URL = 'http://localhost:8000';
-  const API_URL = `${GATEWAY_URL}/api/v1`;
+  const GATEWAY_URL = (process.env.PUBLIC_GATEWAY_URL || 'http://localhost:8000').replace(/\/+$/, '');
+  const API_URL = process.env.TEST_API_URL || `${GATEWAY_URL}/api/v1`;
+  const SEED_PASSWORD = process.env.SEED_PASSWORD;
+  if (!SEED_PASSWORD) {
+    console.error('❌ Thiếu biến môi trường bắt buộc: SEED_PASSWORD');
+    process.exit(1);
+  }
 
   // 1. Đăng nhập ADMIN
   console.log('1. Đăng nhập tài khoản ADMIN...');
   const loginRes = await axios.post(`${API_URL}/auth/login`, {
     email: 'admin@csm.vn',
-    password: 'Admin@123456',
+    password: SEED_PASSWORD,
   });
   const token = loginRes.data.accessToken;
   console.log('   ✅ Đăng nhập thành công, nhận token ADMIN.');

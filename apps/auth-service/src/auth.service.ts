@@ -96,7 +96,10 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token không được để trống');
     }
 
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || 'csm-super-secret-refresh-key-min-32-chars';
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!refreshSecret) {
+      throw new Error('[ConfigError] Thiếu biến môi trường bắt buộc: JWT_REFRESH_SECRET');
+    }
 
     try {
       const payload = this.jwtService.verify(refreshToken, {
@@ -135,8 +138,14 @@ export class AuthService {
   }
 
   private async generateTokens(user: User) {
-    const accessSecret = process.env.JWT_SECRET || 'csm-super-secret-key-production-change-me';
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || 'csm-super-secret-refresh-key-min-32-chars';
+    const accessSecret = process.env.JWT_SECRET;
+    if (!accessSecret) {
+      throw new Error('[ConfigError] Thiếu biến môi trường bắt buộc: JWT_SECRET');
+    }
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!refreshSecret) {
+      throw new Error('[ConfigError] Thiếu biến môi trường bắt buộc: JWT_REFRESH_SECRET');
+    }
 
     const accessPayload: JwtPayload = {
       sub: user.id,

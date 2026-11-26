@@ -440,14 +440,17 @@ async function handleReset(dataSources: {
 
   // 5. Discount DB: Xoá toàn bộ voucher thử nghiệm và lịch sử sử dụng voucher
   try {
-    const rawDiscUrl = process.env.DISCOUNT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_discount';
+    const rawDiscUrl = process.env.DISCOUNT_DB_URL;
+    if (!rawDiscUrl) {
+      throw new Error('Thiếu biến môi trường bắt buộc: DISCOUNT_DB_URL');
+    }
     const parsedDisc = new URL(rawDiscUrl);
     const isSsl = rawDiscUrl.includes('ssl-mode=REQUIRED') || rawDiscUrl.includes('aivencloud.com');
     const connDisc = await mysql.createConnection({
       host: parsedDisc.hostname || 'localhost',
       port: Number(parsedDisc.port) || 3306,
-      user: parsedDisc.username || 'root',
-      password: parsedDisc.password || 'rootpassword',
+      user: decodeURIComponent(parsedDisc.username || 'root'),
+      password: decodeURIComponent(parsedDisc.password || ''),
       database: parsedDisc.pathname.replace(/^\//, '') || 'csm_discount',
       ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {}),
     });
@@ -475,11 +478,24 @@ async function runSeed() {
   const isReset = process.argv.includes('--reset');
   const forceRemote = process.argv.includes('--force-remote');
 
-  const authDbUrl = process.env.AUTH_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_auth';
-  const productDbUrl = process.env.PRODUCT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_product';
-  const inventoryDbUrl = process.env.INVENTORY_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_inventory';
-  const orderDbUrl = process.env.ORDER_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_order';
-  const discountDbUrl = process.env.DISCOUNT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_discount';
+  const authDbUrl = process.env.AUTH_DB_URL;
+  const productDbUrl = process.env.PRODUCT_DB_URL;
+  const inventoryDbUrl = process.env.INVENTORY_DB_URL;
+  const orderDbUrl = process.env.ORDER_DB_URL;
+  const discountDbUrl = process.env.DISCOUNT_DB_URL;
+  const missingDbVars = [
+    ['AUTH_DB_URL', authDbUrl],
+    ['PRODUCT_DB_URL', productDbUrl],
+    ['INVENTORY_DB_URL', inventoryDbUrl],
+    ['ORDER_DB_URL', orderDbUrl],
+    ['DISCOUNT_DB_URL', discountDbUrl],
+  ]
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  if (missingDbVars.length > 0) {
+    console.error(`❌ Thiếu biến môi trường DB bắt buộc: ${missingDbVars.join(', ')}`);
+    process.exit(1);
+  }
 
   if (isReset) {
     const SAFE_LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', 'mysql', 'csm-mysql']);
@@ -582,7 +598,11 @@ async function runSeed() {
   console.log('======================================================\n');
 
   // Lấy mật khẩu từ biến môi trường SEED_PASSWORD (tuyệt đối không in ra log)
-  const seedPassword = process.env.SEED_PASSWORD || 'Demo@123456';
+  const seedPassword = process.env.SEED_PASSWORD;
+  if (!seedPassword) {
+    console.error('❌ Thiếu biến môi trường bắt buộc: SEED_PASSWORD');
+    process.exit(1);
+  }
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(seedPassword, salt);
 

@@ -41,7 +41,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:8000/api/v1';
-const PAYMENT_SIMULATION_SECRET = process.env.PAYMENT_SIMULATION_SECRET || 'csm-payment-simulation-secret-key-2026';
+const PAYMENT_SIMULATION_SECRET = process.env.PAYMENT_SIMULATION_SECRET;
+const SEED_PASSWORD = process.env.SEED_PASSWORD;
+if (!PAYMENT_SIMULATION_SECRET || !SEED_PASSWORD) {
+  console.error('❌ Thiếu biến môi trường bắt buộc: PAYMENT_SIMULATION_SECRET hoặc SEED_PASSWORD');
+  process.exit(1);
+}
 const shouldCleanup = process.argv.includes('--cleanup') || process.env.TEST_CLEANUP === 'true';
 
 // Helper che giấu JWT và mật khẩu nhạy cảm
@@ -197,7 +202,7 @@ async function runSuite() {
     async () => {
       const res = await axios.post(`${BASE_URL}/auth/login`, {
         email: 'admin@csm.vn',
-        password: process.env.SEED_PASSWORD || 'Admin@123456',
+        password: process.env.E2E_ADMIN_PASSWORD || SEED_PASSWORD,
       });
       adminAccessToken = res.data.accessToken;
       adminRefreshToken = res.data.refreshToken;
@@ -215,7 +220,7 @@ async function runSuite() {
     async () => {
       const res = await axios.post(`${BASE_URL}/auth/login`, {
         email: 'customer@csm.vn',
-        password: process.env.SEED_PASSWORD || 'Customer@123456',
+        password: process.env.E2E_CUSTOMER_PASSWORD || SEED_PASSWORD,
       });
       customerAccessToken = res.data.accessToken;
       return res;
@@ -232,7 +237,7 @@ async function runSuite() {
     async () => {
       const res = await axios.post(`${BASE_URL}/auth/login`, {
         email: 'manager.q1@csm.vn',
-        password: process.env.SEED_PASSWORD || 'Manager@123456',
+        password: process.env.E2E_MANAGER_PASSWORD || SEED_PASSWORD,
       });
       managerAccessToken = res.data.accessToken;
       return res;
@@ -1874,6 +1879,7 @@ async function runSuite() {
       env: {
         ...process.env,
         PORT: String(localPaymentPort),
+        PAYMENT_PORT: String(localPaymentPort),
         PAYMENT_SIMULATION: 'false',
         ORDER_SERVICE_URL: process.env.ORDER_SERVICE_URL || 'http://localhost:3004',
       },
@@ -2317,7 +2323,7 @@ async function runSuite() {
       });
     }
 
-    const authDbUrl = process.env.TEST_AUTH_DB_URL || process.env.AUTH_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_auth';
+    const authDbUrl = process.env.TEST_AUTH_DB_URL || process.env.AUTH_DB_URL;
     if (authDbUrl) {
       try {
         const authConn = await createDbConn(authDbUrl);
@@ -2332,7 +2338,7 @@ async function runSuite() {
       }
     }
 
-    const orderDbUrl = process.env.TEST_ORDER_DB_URL || process.env.ORDER_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_order';
+    const orderDbUrl = process.env.TEST_ORDER_DB_URL || process.env.ORDER_DB_URL;
     if (orderDbUrl) {
       try {
         const orderConn = await createDbConn(orderDbUrl);
@@ -2349,7 +2355,7 @@ async function runSuite() {
       }
     }
 
-    const invDbUrl = process.env.TEST_INVENTORY_DB_URL || process.env.INVENTORY_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_inventory';
+    const invDbUrl = process.env.TEST_INVENTORY_DB_URL || process.env.INVENTORY_DB_URL;
     if (invDbUrl) {
       try {
         const invConn = await createDbConn(invDbUrl);
@@ -2375,7 +2381,7 @@ async function runSuite() {
       }
     }
 
-    const prodDbUrl = process.env.TEST_PRODUCT_DB_URL || process.env.PRODUCT_DB_URL || 'mysql://root:rootpassword@localhost:3306/csm_product';
+    const prodDbUrl = process.env.TEST_PRODUCT_DB_URL || process.env.PRODUCT_DB_URL;
     if (prodDbUrl) {
       try {
         const prodConn = await createDbConn(prodDbUrl);

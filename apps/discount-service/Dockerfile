@@ -11,6 +11,7 @@ COPY apps/order-service/package*.json ./apps/order-service/
 COPY apps/payment-service/package*.json ./apps/payment-service/
 COPY apps/product-service/package*.json ./apps/product-service/
 COPY apps/discount-service/package*.json ./apps/discount-service/
+COPY libs/config/package.json ./libs/config/
 
 RUN --mount=type=cache,target=/root/.npm npm ci
 
@@ -33,10 +34,12 @@ COPY apps/order-service/package*.json ./apps/order-service/
 COPY apps/payment-service/package*.json ./apps/payment-service/
 COPY apps/product-service/package*.json ./apps/product-service/
 COPY apps/discount-service/package*.json ./apps/discount-service/
+COPY libs/config/package.json ./libs/config/
 
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 COPY --from=builder /usr/src/app/apps/discount-service/dist ./dist
+COPY --from=builder /usr/src/app/libs/config ./libs/config
 
 EXPOSE 3007
 CMD ["node", "dist/main.js"]
