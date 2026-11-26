@@ -22,6 +22,19 @@ export class OrderItem {
   @Column({ type: 'int', default: 1 })
   quantity: number;
 
+  @Column({ type: 'varchar', length: 20, default: 'PRODUCT' })
+  item_type?: 'PRODUCT' | 'COMBO';
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  combo_id?: string | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  combo_items_snapshot?: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+  }> | null;
+
   @CreateDateColumn()
   created_at: Date;
 }

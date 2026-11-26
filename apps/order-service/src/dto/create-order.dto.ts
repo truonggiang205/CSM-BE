@@ -20,15 +20,32 @@ export class CreateOrderItemDto {
   productName?: string;
 }
 
+export class CreateOrderComboDto {
+  @IsNotEmpty({ message: 'comboId không được để trống' })
+  @IsString()
+  comboId: string;
+
+  @IsNumber({}, { message: 'quantity phải là số' })
+  @Min(1, { message: 'Số lượng combo tối thiểu là 1' })
+  quantity: number;
+}
+
 export class CreateOrderDto {
   @IsNotEmpty({ message: 'branchId không được để trống' })
   @IsString()
   branchId: string;
 
+  @IsOptional()
   @IsArray({ message: 'items phải là mảng sản phẩm' })
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
-  items: CreateOrderItemDto[];
+  items?: CreateOrderItemDto[];
+
+  @IsOptional()
+  @IsArray({ message: 'combos phải là mảng combo' })
+  @ValidateNested({ each: true })
+  @Type(() => CreateOrderComboDto)
+  combos?: CreateOrderComboDto[];
 
   @IsNotEmpty({ message: 'Địa chỉ giao hàng không được để trống' })
   @IsString()
