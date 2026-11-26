@@ -37,6 +37,10 @@ export class CreateOrderDto {
   @IsNotEmpty({ message: 'Phương thức thanh toán không được để trống' })
   @IsString()
   paymentMethod: string;
+
+  @IsOptional()
+  @IsString()
+  voucherCode?: string;
 }
 
 export class UpdateOrderStatusDto {

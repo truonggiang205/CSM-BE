@@ -142,6 +142,7 @@ services:
       PRODUCT_SERVICE_URL: http://product-service:3002
       PAYMENT_SERVICE_URL: http://payment-service:3005
       NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      DISCOUNT_SERVICE_URL: http://discount-service:3007
       INTERNAL_SECRET: ${INTERNAL_SECRET:-csm-super-secure-internal-secret-token}
     ports:
       - "3004:3004"
@@ -215,6 +216,35 @@ services:
       start_period: 10s
 
   # ==========================================
+  # 7.5. DISCOUNT SERVICE (Port 3007)
+  # ==========================================
+  discount-service:
+    build:
+      context: .
+      dockerfile: apps/discount-service/Dockerfile
+    container_name: csm-discount-service
+    restart: always
+    environment:
+      PORT: 3007
+      NODE_ENV: ${NODE_ENV:-development}
+      DB_SYNC: ${DB_SYNC:-true}
+      DISCOUNT_DB_URL: ${DISCOUNT_DB_URL:-mysql://root:${DB_PASSWORD:-rootpassword}@mysql:3306/csm_discount}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-csm-super-secure-internal-secret-token}
+    ports:
+      - "3007:3007"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3007/discounts/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
   # 8. API GATEWAY (Port 8000)
   # ==========================================
   api-gateway:
@@ -235,6 +265,7 @@ services:
       ORDER_SERVICE_URL: http://order-service:3004
       PAYMENT_SERVICE_URL: http://payment-service:3005
       NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      DISCOUNT_SERVICE_URL: http://discount-service:3007
       UPLOAD_DIR: /app/uploads
     volumes:
       - product_uploads:/app/uploads:ro
@@ -252,6 +283,8 @@ services:
       payment-service:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      discount-service:
         condition: service_healthy
     networks:
       - csm-network

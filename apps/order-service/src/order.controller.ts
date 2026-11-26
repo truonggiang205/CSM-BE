@@ -14,6 +14,7 @@ const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://local
 const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
 const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005';
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006';
+const DISCOUNT_SERVICE_URL = process.env.DISCOUNT_SERVICE_URL || 'http://localhost:3007';
 
 @Controller('orders')
 export class OrderController {
@@ -33,7 +34,7 @@ export class OrderController {
 
   @Post()
   async createOrder(@Req() req: any, @Body() dto: CreateOrderDto) {
-    const { branchId, items, shippingAddress, paymentMethod } = dto;
+    const { branchId, items, shippingAddress, paymentMethod, voucherCode } = dto;
     const userId = req.user?.id || req.headers['x-user-id'] || 'anonymous';
     const orderId = randomUUID();
 
@@ -98,8 +99,53 @@ export class OrderController {
       );
     }
 
+    // --- BƯỚC 1.5: XÁC THỰC VOUCHER TỪ DISCOUNT SERVICE (NẾU CÓ TRUYỀN VOUCHER CODE) ---
+    const subtotal = verifiedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    const shippingFee = subtotal >= 150000 ? 0 : 15000;
+    let discountAmount = 0;
+    let appliedVoucherCode: string | null = null;
+
+    if (voucherCode && voucherCode.trim() !== '') {
+      try {
+        const discountRes = await axios.post(
+          `${DISCOUNT_SERVICE_URL}/discounts/vouchers/validate`,
+          {
+            code: voucherCode.trim(),
+            orderValue: subtotal,
+            userId: userId.toString(),
+            shippingFee: shippingFee,
+          },
+          { timeout: 5000 },
+        );
+        if (discountRes.data && (discountRes.data.valid || discountRes.data.isValid)) {
+          discountAmount = Number(discountRes.data.discountAmount) || 0;
+          appliedVoucherCode = voucherCode.trim().toUpperCase();
+        }
+      } catch (discErr: any) {
+        // Rollback kho hàng an toàn nếu voucher không hợp lệ
+        try {
+          await axios.post(
+            `${INVENTORY_SERVICE_URL}/inventory/release-stock`,
+            {
+              branchId: branchId.toString(),
+              referenceId: orderId,
+              items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
+            },
+            { timeout: 5000 },
+          );
+        } catch (releaseErr: any) {
+          console.error('[OrderService] Lỗi giải phóng tồn kho khi voucher không hợp lệ:', releaseErr.message);
+        }
+        throw new HttpException(
+          discErr.response?.data?.message || 'Mã giảm giá không hợp lệ hoặc đã hết hạn',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+
+    const totalAmount = Math.max(0, subtotal + shippingFee - discountAmount);
+
     // --- BƯỚC 2: TẠO ĐƠN HÀNG VÀ LƯU DATABASE (STATUS: PENDING, GIÁ CHUẨN TỪ SERVER) ---
-    const totalAmount = verifiedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
     let savedOrder: Order;
 
     try {
@@ -107,6 +153,9 @@ export class OrderController {
         id: orderId,
         user_id: userId.toString(),
         branch_id: branchId.toString(),
+        subtotal_amount: subtotal,
+        discount_amount: discountAmount,
+        voucher_code: appliedVoucherCode,
         total_amount: totalAmount,
         payment_method: paymentMethod || 'COD',
         status: OrderStatus.PENDING,
@@ -122,8 +171,82 @@ export class OrderController {
 
       savedOrder = await this.orderRepository.save(order);
       console.log(`[OrderService] Đã lưu đơn hàng PENDING vào Database: ${savedOrder.id}`);
+
+      // BƯỚC 2.5: CLAIM VOUCHER (TĂNG SỐ LƯỢT SỬ DỤNG VÀ GHI NHẬN USER) NẾU CÓ ÁP DỤNG VOUCHER
+      if (appliedVoucherCode) {
+        try {
+          await axios.post(
+            `${DISCOUNT_SERVICE_URL}/discounts/vouchers/claim`,
+            {
+              code: appliedVoucherCode,
+              userId: userId.toString(),
+              orderId: savedOrder.id,
+            },
+            {
+              headers: {
+                'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+              },
+              timeout: 5000,
+            },
+          );
+        } catch (claimErr: any) {
+          console.error('[OrderService] Không cập nhật được used_count của voucher:', claimErr.response?.data || claimErr.message);
+          // Rollback đơn hàng (xoá order_items trước để tránh lỗi khoá ngoại) & tồn kho nếu claim voucher thất bại
+          try {
+            await this.orderItemRepository
+              .createQueryBuilder()
+              .delete()
+              .where('order_id = :orderId', { orderId: savedOrder.id })
+              .execute();
+            await this.orderRepository.delete(savedOrder.id);
+          } catch (delErr: any) {
+            console.error('[OrderService] Lỗi khi xoá đơn hàng rollback:', delErr.message);
+          }
+
+          try {
+            await axios.post(
+              `${INVENTORY_SERVICE_URL}/inventory/release-stock`,
+              {
+                branchId: branchId.toString(),
+                referenceId: orderId,
+                items: verifiedItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
+              },
+              { timeout: 5000 },
+            );
+          } catch {}
+
+          // SAGA BÙ TRỪ: Nếu claim thất bại hoặc timeout quá 5s nhưng discount-service đã trừ lượt,
+          // luôn gọi idempotent release để hoàn lại lượt sử dụng, bảo đảm user không bị mất voucher
+          try {
+            await axios.post(
+              `${DISCOUNT_SERVICE_URL}/discounts/vouchers/release`,
+              {
+                code: appliedVoucherCode,
+                userId: userId.toString(),
+                orderId: savedOrder.id,
+              },
+              {
+                headers: {
+                  'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+                },
+                timeout: 5000,
+              },
+            );
+          } catch (relErr: any) {
+            console.error('[OrderService] Lỗi giải phóng voucher trong rollback:', relErr.message);
+          }
+
+          throw new HttpException(
+            claimErr.response?.data?.message || 'Voucher đã hết lượt sử dụng hoặc timeout trong lúc đặt hàng',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
     } catch (dbError) {
-      // SAGA PATTERN: BƯỚC 2 BỊ LỖI -> GỌI SAGA BÙ TRỪ GIẢI PHÓNG KHO (RELEASE STOCK)
+      if (dbError instanceof HttpException) {
+        throw dbError;
+      }
+      // SAGA PATTERN: BƯỚC 2 BỊ LỖI -> GỌI SAGA BÙ TRỪ GIẢI PHÓNG KHO (RELEASE STOCK) VÀ VOUCHER
       console.error(`[OrderService] Lưu DB thất bại, đang rollback release-stock...`);
       try {
         await axios.post(`${INVENTORY_SERVICE_URL}/inventory/release-stock`, {
@@ -133,6 +256,24 @@ export class OrderController {
         });
       } catch (rollbackError) {
         console.error(`[CRITICAL] Rollback tồn kho thất bại! Cần can thiệp thủ công.`, rollbackError);
+      }
+      if (appliedVoucherCode && savedOrder?.id) {
+        try {
+          await axios.post(
+            `${DISCOUNT_SERVICE_URL}/discounts/vouchers/release`,
+            {
+              code: appliedVoucherCode,
+              userId: userId.toString(),
+              orderId: savedOrder.id,
+            },
+            {
+              headers: {
+                'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+              },
+              timeout: 5000,
+            },
+          );
+        } catch {}
       }
       throw new HttpException('Lỗi hệ thống khi tạo đơn hàng. Đã hoàn lại tồn kho.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
@@ -298,6 +439,29 @@ export class OrderController {
         });
       } catch (err: any) {
         console.error(`[OrderService] Giải phóng kho thất bại khi huỷ đơn ${order.id}:`, err);
+      }
+    }
+
+    // SAGA ROLLBACK: Hoàn lại lượt sử dụng voucher nếu đơn hàng bị huỷ
+    if (newStatus === OrderStatus.CANCELLED && order.voucher_code) {
+      try {
+        console.log(`[OrderService] Đơn hàng ${order.id} bị huỷ, gọi release voucher ${order.voucher_code}...`);
+        await axios.post(
+          `${DISCOUNT_SERVICE_URL}/discounts/vouchers/release`,
+          {
+            code: order.voucher_code,
+            userId: order.user_id,
+            orderId: order.id,
+          },
+          {
+            headers: {
+              'x-internal-secret': process.env.INTERNAL_SECRET || 'csm-super-secure-internal-secret-token',
+            },
+            timeout: 5000,
+          },
+        );
+      } catch (err: any) {
+        console.error(`[OrderService] Hoàn voucher thất bại khi huỷ đơn ${order.id}:`, err?.message || err);
       }
     }
 
