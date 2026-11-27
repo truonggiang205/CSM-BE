@@ -164,7 +164,10 @@ export class StorefrontController {
 
     // Khối chỉ được dùng khi đang hiệu lực và có ít nhất 1 sản phẩm còn tồn tại;
     // khối rỗng nhường lại cho khối toàn chuỗi hoặc cách chọn mặc định ở Frontend.
-    const usable = (s: HomeSection) => isLive(s, now) && (s.items || []).some((i) => i.product);
+    // Riêng FLASH_SALE: sản phẩm & giá lấy từ chiến dịch Flash Sale (discount-service),
+    // khối ở đây chỉ giữ tiêu đề / mô tả / lịch hiển thị nên không cần sản phẩm.
+    const usable = (s: HomeSection) =>
+      isLive(s, now) && (s.type === 'FLASH_SALE' || (s.items || []).some((i) => i.product));
 
     const sections: Record<string, any> = {};
     for (const type of HOME_SECTION_TYPES) {

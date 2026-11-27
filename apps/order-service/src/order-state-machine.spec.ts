@@ -188,13 +188,20 @@ describe('Order Service State Machine Test (May trang thai don hang)', () => {
       );
     });
 
-    it('CUSTOMER cố huỷ đơn khi đã CONFIRMED -> Bị từ chối 403 Forbidden', async () => {
+    it('CUSTOMER huỷ đơn COD đã CONFIRMED (chưa giao) -> Cho phép', async () => {
       currentOrder.status = OrderStatus.CONFIRMED;
+      const mockReq = { user: { id: 'usr-customer-01', role: 'CUSTOMER' }, headers: {} };
+      const res = await orderController.updateOrderStatus('order-sm-01', { status: OrderStatus.CANCELLED }, mockReq);
+      expect(res.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('CUSTOMER cố huỷ đơn khi đã SHIPPED -> Bị từ chối 403 Forbidden', async () => {
+      currentOrder.status = OrderStatus.SHIPPED;
       const mockReq = { user: { id: 'usr-customer-01', role: 'CUSTOMER' }, headers: {} };
       await expect(
         orderController.updateOrderStatus('order-sm-01', { status: OrderStatus.CANCELLED }, mockReq),
       ).rejects.toThrow(
-        new HttpException('Khách hàng chỉ có quyền huỷ đơn hàng khi đơn còn ở trạng thái PENDING', HttpStatus.FORBIDDEN),
+        new HttpException('Khách hàng chỉ có quyền huỷ đơn hàng khi đơn chưa được giao', HttpStatus.FORBIDDEN),
       );
     });
 
