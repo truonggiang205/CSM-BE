@@ -17,7 +17,7 @@ import { User, UserRole } from '../apps/auth-service/src/entities/user.entity';
 import { Order, OrderStatus } from '../apps/order-service/src/entities/order.entity';
 import { OrderItem } from '../apps/order-service/src/entities/order-item.entity';
 import { FlashSaleCampaign } from '../apps/discount-service/src/entities/flash-sale-campaign.entity';
-import { FlashSaleItem } from '../apps/discount-service/src/entities/flash-sale-item.entity';
+import { FlashSaleItem, FlashSaleDiscountType } from '../apps/discount-service/src/entities/flash-sale-item.entity';
 import { Combo } from '../apps/discount-service/src/entities/combo.entity';
 import { ComboItem } from '../apps/discount-service/src/entities/combo-item.entity';
 
@@ -1179,7 +1179,9 @@ async function runSeed() {
             product_image: t.prod.image_url || undefined,
             original_price: orig,
             sale_price: sale,
-            discount_percentage: t.discountPct,
+            discount_percentage: Math.round(((orig - sale) / orig) * 100),
+            discount_type: FlashSaleDiscountType.PERCENT,
+            discount_value: t.discountPct,
             quantity_limit: t.limit,
             sold_count: t.sold,
             max_per_user: t.maxPerUser,

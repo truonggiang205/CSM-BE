@@ -624,6 +624,23 @@ export class OrderController {
       }
     }
 
+    // Huỷ đơn đã trừ kho chính thức (CONFIRMED / PAID, vd. đơn COD) -> hoàn hàng về kho
+    if (
+      (oldStatus === OrderStatus.CONFIRMED || oldStatus === OrderStatus.PAID) &&
+      newStatus === OrderStatus.CANCELLED
+    ) {
+      try {
+        console.log(`[OrderService] Đơn hàng ${order.id} huỷ khi đã trừ kho (${oldStatus}), gọi return-stock...`);
+        await axios.post(
+          `${INVENTORY_SERVICE_URL}/inventory/return-stock`,
+          { branchId: order.branch_id, referenceId: order.id, items: inventoryItemsForOrder },
+          { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 },
+        );
+      } catch (err: any) {
+        console.error(`[OrderService] Hoàn kho thất bại khi huỷ đơn ${order.id}:`, err?.message || err);
+      }
+    }
+
     // SAGA ROLLBACK: Hoàn lại lượt sử dụng voucher nếu đơn hàng bị huỷ
     if (newStatus === OrderStatus.CANCELLED) {
       if (order.voucher_code) {

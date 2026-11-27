@@ -112,6 +112,8 @@ export class DiscountService implements OnModuleInit {
               original_price: 25000,
               sale_price: 19000,
               discount_percentage: 24,
+              discount_type: FlashSaleDiscountType.PERCENT,
+              discount_value: 24,
               quantity_limit: 100,
               sold_count: 38,
               max_per_user: 2,
@@ -122,6 +124,8 @@ export class DiscountService implements OnModuleInit {
               original_price: 18000,
               sale_price: 14000,
               discount_percentage: 22,
+              discount_type: FlashSaleDiscountType.PERCENT,
+              discount_value: 22,
               quantity_limit: 80,
               sold_count: 42,
               max_per_user: 2,
@@ -132,6 +136,8 @@ export class DiscountService implements OnModuleInit {
               original_price: 9000,
               sale_price: 7000,
               discount_percentage: 22,
+              discount_type: FlashSaleDiscountType.PERCENT,
+              discount_value: 22,
               quantity_limit: 150,
               sold_count: 89,
               max_per_user: 3,
@@ -142,6 +148,8 @@ export class DiscountService implements OnModuleInit {
               original_price: 12000,
               sale_price: 9000,
               discount_percentage: 25,
+              discount_type: FlashSaleDiscountType.PERCENT,
+              discount_value: 25,
               quantity_limit: 120,
               sold_count: 55,
               max_per_user: 2,
@@ -1176,6 +1184,9 @@ export class DiscountService implements OnModuleInit {
         ? Number(dto.original_price)
         : calculatedOriginal;
 
+    if (!(Number(dto.combo_price) > 0)) {
+      throw new BadRequestException('Giá bán Combo phải lớn hơn 0đ');
+    }
     if (originalPrice > 0 && Number(dto.combo_price) > originalPrice) {
       throw new BadRequestException('Giá bán Combo không được lớn hơn tổng giá gốc');
     }
@@ -1223,6 +1234,23 @@ export class DiscountService implements OnModuleInit {
     if (dto.is_active !== undefined) combo.is_active = dto.is_active;
 
     if (dto.items !== undefined) {
+      // Kiểm tra trước khi xoá thành phần cũ để không làm mất dữ liệu khi request không hợp lệ
+      const totalItemQty = dto.items.reduce((sum, i) => sum + Number(i.quantity || 1), 0);
+      if (dto.items.length === 0 || totalItemQty < 2) {
+        throw new BadRequestException('Combo phải có tổng số lượng từ 2 sản phẩm trở lên');
+      }
+      const nextOriginal =
+        dto.original_price !== undefined && dto.original_price > 0
+          ? Number(dto.original_price)
+          : dto.items.reduce(
+              (sum, item) => sum + (Number(item.original_price) || 0) * (Number(item.quantity) || 1),
+              0,
+            );
+      const nextComboPrice = dto.combo_price !== undefined ? Number(dto.combo_price) : Number(combo.combo_price);
+      if (nextOriginal > 0 && nextComboPrice > nextOriginal) {
+        throw new BadRequestException('Giá bán Combo không được lớn hơn tổng giá gốc');
+      }
+
       await this.comboItemRepo.delete({ combo_id: combo.id });
       combo.items = dto.items.map((item) =>
         this.comboItemRepo.create({
@@ -1247,6 +1275,9 @@ export class DiscountService implements OnModuleInit {
     }
 
     if (dto.combo_price !== undefined) {
+      if (!(Number(dto.combo_price) > 0)) {
+        throw new BadRequestException('Giá bán Combo phải lớn hơn 0đ');
+      }
       combo.combo_price = Number(dto.combo_price);
     }
 

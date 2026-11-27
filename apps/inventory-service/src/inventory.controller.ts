@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Param, Body, BadRequestException, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  BadRequestException,
+  ForbiddenException,
+  UseGuards,
+  Query,
+  Headers,
+} from '@nestjs/common';
+import { requireEnv } from '@csm/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Stock } from './entities/stock.entity';
@@ -364,6 +376,79 @@ export class InventoryController {
           message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent race detected)',
           idempotent: true,
         };
+      }
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // 4. SAGA - Bù trừ sau khi đã trừ kho: Hoàn kho khi huỷ đơn CONFIRMED / PAID - Idempotent
+  // Chỉ hoàn đúng phần đã thực sự trừ (có giao dịch OUT cùng referenceId) và chỉ cho gọi nội bộ.
+  @Post('return-stock')
+  async returnStock(@Body() body: ReleaseStockDto, @Headers('x-internal-secret') secret?: string) {
+    if (!secret || secret !== requireEnv('INTERNAL_SECRET')) {
+      throw new ForbiddenException('Endpoint chỉ cho phép gọi nội bộ');
+    }
+    const { branchId, items, referenceId } = body;
+    if (!referenceId) {
+      throw new BadRequestException('Thiếu referenceId (mã đơn hàng) để hoàn kho');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      let returnedCount = 0;
+      let alreadyHandledCount = 0;
+
+      for (const item of items) {
+        const stock = await queryRunner.manager.findOne(Stock, {
+          where: { branch_id: branchId, product_id: item.productId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!stock) continue;
+
+        const existingReturn = await queryRunner.manager.findOne(StockTransaction, {
+          where: { reference_id: referenceId, stock_id: stock.id, type: TransactionType.RETURN },
+        });
+        if (existingReturn) {
+          alreadyHandledCount++;
+          continue;
+        }
+
+        const outTx = await queryRunner.manager.findOne(StockTransaction, {
+          where: { reference_id: referenceId, stock_id: stock.id, type: TransactionType.OUT },
+        });
+        if (!outTx) continue; // chưa từng trừ kho cho đơn này -> không có gì để hoàn
+
+        const qty = Math.min(Number(item.quantity) || 0, outTx.quantity);
+        if (qty <= 0) continue;
+
+        stock.quantity += qty;
+        const savedStock = await queryRunner.manager.save(stock);
+        await queryRunner.manager.save(
+          queryRunner.manager.create(StockTransaction, {
+            stock_id: savedStock.id,
+            type: TransactionType.RETURN,
+            quantity: qty,
+            reference_id: referenceId,
+          }),
+        );
+        returnedCount++;
+      }
+
+      await queryRunner.commitTransaction();
+
+      if (returnedCount === 0 && alreadyHandledCount > 0) {
+        return { success: true, message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent)', idempotent: true };
+      }
+      return { success: true, message: `Đã hoàn ${returnedCount} mặt hàng về kho`, idempotent: false };
+    } catch (err: any) {
+      await queryRunner.rollbackTransaction();
+      if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.message?.includes('Duplicate entry')) {
+        return { success: true, message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent race detected)', idempotent: true };
       }
       throw err;
     } finally {
