@@ -1,9 +1,11 @@
-import { Controller, Post, Get, Body, Req, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Req, Query, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './guards/auth.guard';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -37,8 +39,20 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard)
+  @Patch('profile')
+  updateProfile(@Req() req: any, @Body() body: UpdateProfileDto) {
+    return this.authService.updateProfile(req.user.sub || req.user.id, body);
+  }
+
+  @UseGuards(AuthGuard)
+  @Patch('change-password')
+  changePassword(@Req() req: any, @Body() body: ChangePasswordDto) {
+    return this.authService.changePassword(req.user.sub || req.user.id, body);
+  }
+
+  @UseGuards(AuthGuard)
   @Get('users')
-  getUsers(@Query('role') role?: string) {
-    return this.authService.getUsers(role);
+  getUsers(@Req() req: any, @Query('role') role?: string) {
+    return this.authService.getUsers(req.user?.role, role);
   }
 }

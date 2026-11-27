@@ -1,4 +1,11 @@
-import { Injectable, ConflictException, UnauthorizedException, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -11,6 +18,22 @@ export interface JwtPayload {
   role: UserRole;
   branch_id?: string;
   type: 'access' | 'refresh';
+}
+
+const PHONE_REGEX = /^(\+84|0)\d{9,10}$/;
+
+/** Chuẩn hoá họ tên: bỏ khoảng trắng thừa; chuỗi rỗng => null */
+function normalizeName(value?: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const v = value.replace(/\s+/g, ' ').trim();
+  return v ? v.slice(0, 100) : null;
+}
+
+/** Chuẩn hoá SĐT: bỏ khoảng trắng/dấu chấm/gạch; chuỗi rỗng => null */
+function normalizePhone(value?: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const v = value.replace(/[\s.\-()]/g, '');
+  return v || null;
 }
 
 @Injectable()
@@ -35,6 +58,12 @@ export class AuthService {
       throw new ConflictException('Email đã được sử dụng');
     }
 
+    const full_name = normalizeName(body.fullName);
+    const phone = normalizePhone(body.phone);
+    if (phone && !PHONE_REGEX.test(phone)) {
+      throw new BadRequestException('Số điện thoại không hợp lệ');
+    }
+
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(body.password, salt);
 
@@ -44,6 +73,8 @@ export class AuthService {
       password_hash,
       role: UserRole.CUSTOMER,
       branch_id: undefined,
+      full_name,
+      phone,
     });
 
     const saved = await this.userRepository.save(user);
@@ -51,12 +82,7 @@ export class AuthService {
 
     return {
       message: 'Đăng ký tài khoản thành công',
-      user: {
-        id: saved.id,
-        email: saved.email,
-        role: saved.role,
-        fullName: (body.fullName && String(body.fullName).trim()) || saved.email.split('@')[0],
-      },
+      user: this.toPublicUser(saved),
       ...tokens,
     };
   }
@@ -81,12 +107,7 @@ export class AuthService {
 
     return {
       message: 'Đăng nhập thành công',
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        branch_id: user.branch_id,
-      },
+      user: this.toPublicUser(user),
       ...tokens,
     };
   }
@@ -123,18 +144,80 @@ export class AuthService {
     }
   }
 
-  async getProfile(userId: string) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('Không tìm thấy người dùng');
-    }
+  /** Thông tin công khai của người dùng (không bao giờ trả password_hash) */
+  private toPublicUser(user: User) {
     return {
       id: user.id,
       email: user.email,
       role: user.role,
-      branch_id: user.branch_id,
+      branch_id: user.branch_id ?? null,
+      fullName: user.full_name || user.email.split('@')[0],
+      phone: user.phone ?? null,
       created_at: user.created_at,
+      updated_at: user.updated_at,
     };
+  }
+
+  private async findUserOrThrow(userId: string): Promise<User> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+    return user;
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.findUserOrThrow(userId);
+    return this.toPublicUser(user);
+  }
+
+  async updateProfile(userId: string, body: { fullName?: string; phone?: string }) {
+    const user = await this.findUserOrThrow(userId);
+
+    if (body.fullName !== undefined) {
+      const full_name = normalizeName(body.fullName);
+      if (!full_name || full_name.length < 2) {
+        throw new BadRequestException('Họ tên phải có ít nhất 2 ký tự');
+      }
+      user.full_name = full_name;
+    }
+
+    if (body.phone !== undefined) {
+      const phone = normalizePhone(body.phone);
+      if (phone && !PHONE_REGEX.test(phone)) {
+        throw new BadRequestException('Số điện thoại không hợp lệ');
+      }
+      user.phone = phone;
+    }
+
+    const saved = await this.userRepository.save(user);
+    return {
+      message: 'Cập nhật hồ sơ thành công',
+      user: this.toPublicUser(saved),
+    };
+  }
+
+  async changePassword(userId: string, body: { currentPassword?: string; newPassword?: string }) {
+    if (!body.currentPassword || !body.newPassword) {
+      throw new BadRequestException('Vui lòng nhập đầy đủ mật khẩu hiện tại và mật khẩu mới');
+    }
+    if (body.newPassword.length < 6) {
+      throw new BadRequestException('Mật khẩu mới phải có ít nhất 6 ký tự');
+    }
+
+    const user = await this.findUserOrThrow(userId);
+    const isMatch = await bcrypt.compare(body.currentPassword, user.password_hash);
+    if (!isMatch) {
+      throw new BadRequestException('Mật khẩu hiện tại không chính xác');
+    }
+    if (await bcrypt.compare(body.newPassword, user.password_hash)) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password_hash = await bcrypt.hash(body.newPassword, salt);
+    await this.userRepository.save(user);
+    return { message: 'Đổi mật khẩu thành công' };
   }
 
   private async generateTokens(user: User) {
@@ -177,12 +260,17 @@ export class AuthService {
     };
   }
 
-  async getUsers(role?: string) {
+  async getUsers(requesterRole: UserRole | undefined, role?: string) {
+    // BẢO MẬT: khách hàng không được xem danh sách tài khoản của hệ thống
+    if (!requesterRole || requesterRole === UserRole.CUSTOMER) {
+      throw new ForbiddenException('Bạn không có quyền xem danh sách người dùng');
+    }
     const where = role ? { role: role as UserRole } : {};
-    return await this.userRepository.find({
+    const users = await this.userRepository.find({
       where,
-      select: ['id', 'email', 'role', 'branch_id', 'created_at', 'updated_at'],
+      select: ['id', 'email', 'role', 'branch_id', 'full_name', 'phone', 'created_at', 'updated_at'],
       order: { created_at: 'DESC' },
     });
+    return users.map((u) => this.toPublicUser(u));
   }
 }

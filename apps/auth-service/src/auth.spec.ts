@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { UnauthorizedException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { User, UserRole } from './entities/user.entity';
@@ -11,7 +11,7 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
   let userRepository: any;
   let jwtService: any;
 
-  const mockUsers: User[] = [];
+  const mockUsers: Array<Partial<User> & { id: string; email: string; password_hash: string }> = [];
 
   beforeEach(async () => {
     mockUsers.length = 0;
@@ -35,9 +35,12 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
         ...data,
       })),
       save: jest.fn().mockImplementation(async (user: any) => {
-        mockUsers.push(user);
+        const idx = mockUsers.findIndex((u) => u.id === user.id);
+        if (idx >= 0) mockUsers[idx] = user;
+        else mockUsers.push(user);
         return user;
       }),
+      find: jest.fn().mockImplementation(async () => mockUsers),
     };
 
     jwtService = {
@@ -94,6 +97,24 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
       expect(savedInDb?.password_hash).not.toBe('Password123!');
       const isMatch = await bcrypt.compare('Password123!', savedInDb!.password_hash);
       expect(isMatch).toBe(true);
+      // Họ tên được LƯU vào DB (trước đây bị bỏ mất)
+      expect(savedInDb?.full_name).toBe('Khách Hàng Mới');
+      expect((res.user as any).password_hash).toBeUndefined();
+    });
+
+    it('Đăng ký có SĐT -> Chuẩn hoá và lưu SĐT', async () => {
+      const res = await authService.register({
+        email: 'phone@csm.vn',
+        password: 'Password123!',
+        phone: '090 123 4567',
+      });
+      expect(res.user.phone).toBe('0901234567');
+    });
+
+    it('Đăng ký với SĐT sai định dạng -> Ném BadRequestException (400)', async () => {
+      await expect(
+        authService.register({ email: 'badphone@csm.vn', password: 'Password123!', phone: '12345' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('Đăng ký với email trùng lặp -> Ném ConflictException (409)', async () => {
@@ -202,6 +223,75 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
       await expect(
         authService.refreshToken('invalid-corrupted-token'),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('4. Hồ sơ cá nhân (Profile / Đổi mật khẩu)', () => {
+    beforeEach(async () => {
+      const password_hash = await bcrypt.hash('OldPass123!', 10);
+      mockUsers.push({
+        id: 'usr-01',
+        email: 'test@csm.vn',
+        password_hash,
+        role: UserRole.CUSTOMER,
+        branch_id: null as any,
+        full_name: null,
+        phone: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    });
+
+    it('Lấy hồ sơ -> có fullName (mặc định lấy từ email) và không lộ password_hash', async () => {
+      const profile = await authService.getProfile('usr-01');
+      expect(profile.fullName).toBe('test');
+      expect(profile.phone).toBeNull();
+      expect((profile as any).password_hash).toBeUndefined();
+    });
+
+    it('Cập nhật họ tên + SĐT -> lưu lại và trả về hồ sơ mới', async () => {
+      const res = await authService.updateProfile('usr-01', {
+        fullName: '  Nguyễn   Văn A ',
+        phone: '+84901234567',
+      });
+      expect(res.user.fullName).toBe('Nguyễn Văn A');
+      expect(res.user.phone).toBe('+84901234567');
+      expect(mockUsers[0].full_name).toBe('Nguyễn Văn A');
+    });
+
+    it('Cập nhật SĐT rỗng -> xoá SĐT', async () => {
+      mockUsers[0].phone = '0901234567';
+      const res = await authService.updateProfile('usr-01', { phone: '' });
+      expect(res.user.phone).toBeNull();
+    });
+
+    it('Cập nhật họ tên quá ngắn hoặc SĐT sai -> BadRequestException', async () => {
+      await expect(authService.updateProfile('usr-01', { fullName: ' a ' })).rejects.toThrow(BadRequestException);
+      await expect(authService.updateProfile('usr-01', { phone: 'abc' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('Đổi mật khẩu đúng mật khẩu cũ -> mật khẩu mới dùng để đăng nhập được', async () => {
+      const res = await authService.changePassword('usr-01', {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+      });
+      expect(res.message).toBe('Đổi mật khẩu thành công');
+      const login = await authService.login({ email: 'test@csm.vn', password: 'NewPass456!' });
+      expect(login.accessToken).toBeDefined();
+    });
+
+    it('Đổi mật khẩu sai mật khẩu cũ / trùng mật khẩu cũ -> BadRequestException', async () => {
+      await expect(
+        authService.changePassword('usr-01', { currentPassword: 'Wrong!', newPassword: 'NewPass456!' }),
+      ).rejects.toThrow(new BadRequestException('Mật khẩu hiện tại không chính xác'));
+      await expect(
+        authService.changePassword('usr-01', { currentPassword: 'OldPass123!', newPassword: 'OldPass123!' }),
+      ).rejects.toThrow(new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại'));
+    });
+
+    it('Khách hàng gọi danh sách người dùng -> ForbiddenException; Admin thì được', async () => {
+      await expect(authService.getUsers(UserRole.CUSTOMER)).rejects.toThrow(ForbiddenException);
+      await expect(authService.getUsers(UserRole.ADMIN)).resolves.toHaveLength(1);
     });
   });
 });

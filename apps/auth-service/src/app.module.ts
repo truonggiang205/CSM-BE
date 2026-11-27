@@ -25,6 +25,8 @@ import { User } from './entities/user.entity';
         type: 'mysql',
         url: configService.getOrThrow<string>('AUTH_DB_URL'),
         entities: [User],
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        migrationsRun: configService.get<string>('DB_SYNC') === 'false',
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
           configService.get<string>('DB_SYNC') === 'true',
