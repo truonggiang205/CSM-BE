@@ -209,6 +209,24 @@ describe('StorefrontController', () => {
     expect(home.sections.NEW_ARRIVALS.id).toBe('s-global');
   });
 
+  it('home keeps FLASH_SALE section without products (items come from discount-service campaign)', async () => {
+    sectionRepo.find.mockResolvedValue([
+      {
+        id: 's-flash',
+        type: 'FLASH_SALE',
+        branch_id: null,
+        title: 'Giờ vàng cuối tuần',
+        is_active: true,
+        start_at: null,
+        end_at: null,
+        items: [],
+      },
+    ]);
+    const home = await controller.getHome('br-01');
+    expect(home.sections.FLASH_SALE.id).toBe('s-flash');
+    expect(home.sections.FLASH_SALE.title).toBe('Giờ vàng cuối tuần');
+  });
+
   it('upsertSection validates type, duplicates and unknown products', async () => {
     await expect(controller.upsertSection(ADMIN, 'BOGUS', { items: [] } as any)).rejects.toThrow(
       BadRequestException,

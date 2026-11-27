@@ -11,6 +11,7 @@ import { HomeSectionItem } from './entities/home-section-item.entity';
 import { Announcement } from './entities/announcement.entity';
 import { HomeLayout } from './entities/home-layout.entity';
 import { StorefrontController } from './storefront/storefront.controller';
+import { WishlistItem } from './entities/wishlist.entity';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { StorefrontController } from './storefront/storefront.controller';
       useFactory: (configService: ConfigService) => ({
         type: 'mysql',
         url: configService.get<string>('PRODUCT_DB_URL'),
-        entities: [Product, Category, Banner, HomeSection, HomeSectionItem, Announcement, HomeLayout],
+        entities: [Product, Category, Banner, HomeSection, HomeSectionItem, Announcement, HomeLayout, WishlistItem],
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
           configService.get<string>('DB_SYNC') === 'true',
@@ -40,7 +41,7 @@ import { StorefrontController } from './storefront/storefront.controller';
 
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Product, Category, Banner, HomeSection, HomeSectionItem, Announcement, HomeLayout]),
+    TypeOrmModule.forFeature([Product, Category, Banner, HomeSection, HomeSectionItem, Announcement, HomeLayout, WishlistItem]),
   ],
   controllers: [ProductController, StorefrontController],
   providers: [],

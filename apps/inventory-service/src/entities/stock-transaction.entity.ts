@@ -5,6 +5,8 @@ export enum TransactionType {
   OUT = 'OUT',
   RESERVE = 'RESERVE',
   CANCEL_RESERVE = 'CANCEL_RESERVE',
+  /** Hoàn lại kho khi huỷ đơn đã trừ kho chính thức (CONFIRMED / PAID) */
+  RETURN = 'RETURN',
 }
 
 @Entity('stock_transactions')
