@@ -61,7 +61,7 @@ export class AuthService {
     const full_name = normalizeName(body.fullName);
     const phone = normalizePhone(body.phone);
     if (phone && !PHONE_REGEX.test(phone)) {
-      throw new BadRequestException('Số điện thoại không hợp lệ');
+      throw new BadRequestException('Số điện thoại không hợp lệ (bắt đầu bằng 0 hoặc +84, 10–11 chữ số)');
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -185,7 +185,7 @@ export class AuthService {
     if (body.phone !== undefined) {
       const phone = normalizePhone(body.phone);
       if (phone && !PHONE_REGEX.test(phone)) {
-        throw new BadRequestException('Số điện thoại không hợp lệ');
+        throw new BadRequestException('Số điện thoại không hợp lệ (bắt đầu bằng 0 hoặc +84, 10–11 chữ số)');
       }
       user.phone = phone;
     }
