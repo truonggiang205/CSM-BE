@@ -9,8 +9,10 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^(|(\+84|0)\d{9,10})$/, {
-    message: 'Số điện thoại không hợp lệ (bắt đầu bằng 0 hoặc +84, 10–11 chữ số)',
+  // Cho phép khoảng trắng/dấu chấm/gạch khi nhập; service sẽ chuẩn hoá và kiểm tra chặt (0|+84 + 9–10 số)
+  @MaxLength(20, { message: 'Số điện thoại tối đa 20 ký tự' })
+  @Matches(/^[+\d\s.\-()]*$/, {
+    message: 'Số điện thoại chỉ được chứa chữ số, dấu +, khoảng trắng, dấu chấm hoặc gạch ngang',
   })
   phone?: string;
 }
