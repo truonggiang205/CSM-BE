@@ -21,18 +21,24 @@ if (!seedPassword) {
 const seedUsers = [
   {
     email: 'admin@csm.vn',
+    full_name: 'Quản trị viên CSM',
+    phone: '0900000001',
     password: process.env.SEED_ADMIN_PASSWORD || seedPassword,
     role: UserRole.ADMIN,
     branch_id: null,
   },
   {
     email: 'manager.q1@csm.vn',
+    full_name: 'Quản lý Quận 1',
+    phone: '0900000002',
     password: process.env.SEED_MANAGER_PASSWORD || seedPassword,
     role: UserRole.BRANCH_MANAGER,
     branch_id: 'br-01',
   },
   {
     email: 'customer@csm.vn',
+    full_name: 'Khách hàng Demo',
+    phone: '0900000003',
     password: process.env.SEED_CUSTOMER_PASSWORD || seedPassword,
     role: UserRole.CUSTOMER,
     branch_id: null,
@@ -69,6 +75,8 @@ async function runSeed() {
       existing.password_hash = password_hash;
       existing.role = item.role;
       existing.branch_id = (item.branch_id || null) as any;
+      existing.full_name = existing.full_name || item.full_name;
+      existing.phone = existing.phone || item.phone;
       await userRepo.save(existing);
       console.log(`Updated user: ${item.email} (${item.role})`);
     } else {
@@ -77,6 +85,8 @@ async function runSeed() {
         password_hash,
         role: item.role,
         branch_id: (item.branch_id || null) as any,
+        full_name: item.full_name,
+        phone: item.phone,
       });
       await userRepo.save(newUser);
       console.log(`Created user: ${item.email} (${item.role})`);

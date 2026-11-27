@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { createEnvValidator } from '@csm/config';
-import { AuthController } from './auth.controller';
+import { AuthController, AvatarFileController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './guards/auth.guard';
 import { User } from './entities/user.entity';
@@ -25,6 +25,8 @@ import { User } from './entities/user.entity';
         type: 'mysql',
         url: configService.getOrThrow<string>('AUTH_DB_URL'),
         entities: [User],
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        migrationsRun: configService.get<string>('DB_SYNC') === 'false',
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
           configService.get<string>('DB_SYNC') === 'true',
@@ -44,7 +46,7 @@ import { User } from './entities/user.entity';
       inject: [ConfigService],
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AvatarFileController],
   providers: [AuthService, AuthGuard],
 })
 export class AppModule {}

@@ -1,8 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { UnauthorizedException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { AuthService } from './auth.service';
 import { User, UserRole } from './entities/user.entity';
 
@@ -11,7 +14,7 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
   let userRepository: any;
   let jwtService: any;
 
-  const mockUsers: User[] = [];
+  const mockUsers: Array<Partial<User> & { id: string; email: string; password_hash: string }> = [];
 
   beforeEach(async () => {
     mockUsers.length = 0;
@@ -35,9 +38,12 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
         ...data,
       })),
       save: jest.fn().mockImplementation(async (user: any) => {
-        mockUsers.push(user);
+        const idx = mockUsers.findIndex((u) => u.id === user.id);
+        if (idx >= 0) mockUsers[idx] = user;
+        else mockUsers.push(user);
         return user;
       }),
+      find: jest.fn().mockImplementation(async () => mockUsers),
     };
 
     jwtService = {
@@ -94,6 +100,24 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
       expect(savedInDb?.password_hash).not.toBe('Password123!');
       const isMatch = await bcrypt.compare('Password123!', savedInDb!.password_hash);
       expect(isMatch).toBe(true);
+      // Họ tên được LƯU vào DB (trước đây bị bỏ mất)
+      expect(savedInDb?.full_name).toBe('Khách Hàng Mới');
+      expect((res.user as any).password_hash).toBeUndefined();
+    });
+
+    it('Đăng ký có SĐT -> Chuẩn hoá và lưu SĐT', async () => {
+      const res = await authService.register({
+        email: 'phone@csm.vn',
+        password: 'Password123!',
+        phone: '090 123 4567',
+      });
+      expect(res.user.phone).toBe('0901234567');
+    });
+
+    it('Đăng ký với SĐT sai định dạng -> Ném BadRequestException (400)', async () => {
+      await expect(
+        authService.register({ email: 'badphone@csm.vn', password: 'Password123!', phone: '12345' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('Đăng ký với email trùng lặp -> Ném ConflictException (409)', async () => {
@@ -202,6 +226,142 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
       await expect(
         authService.refreshToken('invalid-corrupted-token'),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('4. Hồ sơ cá nhân (Profile / Đổi mật khẩu)', () => {
+    beforeEach(async () => {
+      const password_hash = await bcrypt.hash('OldPass123!', 10);
+      mockUsers.push({
+        id: 'usr-01',
+        email: 'test@csm.vn',
+        password_hash,
+        role: UserRole.CUSTOMER,
+        branch_id: null as any,
+        full_name: null,
+        phone: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    });
+
+    it('Lấy hồ sơ -> có fullName (mặc định lấy từ email) và không lộ password_hash', async () => {
+      const profile = await authService.getProfile('usr-01');
+      expect(profile.fullName).toBe('test');
+      expect(profile.phone).toBeNull();
+      expect((profile as any).password_hash).toBeUndefined();
+    });
+
+    it('Cập nhật họ tên + SĐT -> lưu lại và trả về hồ sơ mới', async () => {
+      const res = await authService.updateProfile('usr-01', {
+        fullName: '  Nguyễn   Văn A ',
+        phone: '+84901234567',
+      });
+      expect(res.user.fullName).toBe('Nguyễn Văn A');
+      expect(res.user.phone).toBe('+84901234567');
+      expect(mockUsers[0].full_name).toBe('Nguyễn Văn A');
+    });
+
+    it('Cập nhật SĐT rỗng -> xoá SĐT', async () => {
+      mockUsers[0].phone = '0901234567';
+      const res = await authService.updateProfile('usr-01', { phone: '' });
+      expect(res.user.phone).toBeNull();
+    });
+
+    it('Cập nhật họ tên quá ngắn hoặc SĐT sai -> BadRequestException', async () => {
+      await expect(authService.updateProfile('usr-01', { fullName: ' a ' })).rejects.toThrow(BadRequestException);
+      await expect(authService.updateProfile('usr-01', { phone: 'abc' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('Đổi mật khẩu đúng mật khẩu cũ -> mật khẩu mới dùng để đăng nhập được', async () => {
+      const res = await authService.changePassword('usr-01', {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+      });
+      expect(res.message).toBe('Đổi mật khẩu thành công');
+      const login = await authService.login({ email: 'test@csm.vn', password: 'NewPass456!' });
+      expect(login.accessToken).toBeDefined();
+    });
+
+    it('Đổi mật khẩu sai mật khẩu cũ / trùng mật khẩu cũ -> BadRequestException', async () => {
+      await expect(
+        authService.changePassword('usr-01', { currentPassword: 'Wrong!', newPassword: 'NewPass456!' }),
+      ).rejects.toThrow(new BadRequestException('Mật khẩu hiện tại không chính xác'));
+      await expect(
+        authService.changePassword('usr-01', { currentPassword: 'OldPass123!', newPassword: 'OldPass123!' }),
+      ).rejects.toThrow(new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại'));
+    });
+
+    it('Khách hàng gọi danh sách người dùng -> ForbiddenException; Admin thì được', async () => {
+      await expect(authService.getUsers(UserRole.CUSTOMER)).rejects.toThrow(ForbiddenException);
+      await expect(authService.getUsers(UserRole.ADMIN)).resolves.toHaveLength(1);
+    });
+  });
+
+  describe('5. Ảnh đại diện (Avatar)', () => {
+    const PNG_BYTES = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(32, 0),
+    ]);
+    let uploadDir: string;
+
+    const makeFile = (over: Partial<Express.Multer.File> = {}) =>
+      ({
+        originalname: 'me.png',
+        mimetype: 'image/png',
+        size: PNG_BYTES.length,
+        buffer: PNG_BYTES,
+        ...over,
+      }) as Express.Multer.File;
+
+    beforeEach(() => {
+      uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-avatar-'));
+      process.env.UPLOAD_DIR = uploadDir;
+      mockUsers.push({
+        id: 'usr-01',
+        email: 'test@csm.vn',
+        password_hash: 'hashed',
+        role: UserRole.CUSTOMER,
+        avatar_url: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    });
+
+    afterEach(() => {
+      fs.rmSync(uploadDir, { recursive: true, force: true });
+      delete process.env.UPLOAD_DIR;
+    });
+
+    it('Tải ảnh PNG hợp lệ -> lưu file avatar-*.png và trả avatarUrl', async () => {
+      const res = await authService.updateAvatar('usr-01', makeFile());
+      expect(res.user.avatarUrl).toMatch(/^\/uploads\/avatar-[0-9a-f-]+\.png$/);
+      expect(fs.existsSync(path.join(uploadDir, path.basename(res.user.avatarUrl!)))).toBe(true);
+    });
+
+    it('Đổi ảnh lần 2 -> xoá file ảnh cũ', async () => {
+      const first = await authService.updateAvatar('usr-01', makeFile());
+      const second = await authService.updateAvatar('usr-01', makeFile());
+      expect(second.user.avatarUrl).not.toBe(first.user.avatarUrl);
+      expect(fs.existsSync(path.join(uploadDir, path.basename(first.user.avatarUrl!)))).toBe(false);
+    });
+
+    it('File giả đuôi .png (nội dung không phải ảnh) / sai MIME / không có file -> BadRequest', async () => {
+      await expect(
+        authService.updateAvatar('usr-01', makeFile({ buffer: Buffer.from('<script>alert(1)</script>') })),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        authService.updateAvatar('usr-01', makeFile({ originalname: 'x.gif', mimetype: 'image/gif' })),
+      ).rejects.toThrow(BadRequestException);
+      await expect(authService.updateAvatar('usr-01', undefined)).rejects.toThrow(BadRequestException);
+      expect(fs.readdirSync(uploadDir)).toHaveLength(0);
+    });
+
+    it('Xoá ảnh đại diện -> avatarUrl null và file bị xoá', async () => {
+      const up = await authService.updateAvatar('usr-01', makeFile());
+      const res = await authService.removeAvatar('usr-01');
+      expect(res.user.avatarUrl).toBeNull();
+      expect(fs.existsSync(path.join(uploadDir, path.basename(up.user.avatarUrl!)))).toBe(false);
     });
   });
 });

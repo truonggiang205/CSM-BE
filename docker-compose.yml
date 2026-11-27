@@ -49,6 +49,10 @@ services:
       AUTH_DB_URL: mysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:?Vui lòng cấu hình MYSQL_PASSWORD trong .env}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/csm_auth
       JWT_SECRET: ${JWT_SECRET:?Vui lòng cấu hình JWT_SECRET trong .env}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Vui lòng cấu hình JWT_REFRESH_SECRET trong .env}
+      # Ảnh đại diện lưu chung volume với ảnh sản phẩm để api-gateway phục vụ trực tiếp
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - product_uploads:/app/uploads
     ports:
       - "${AUTH_PORT:-3001}:${AUTH_PORT:-3001}"
     depends_on:
