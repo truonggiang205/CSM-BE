@@ -98,7 +98,7 @@ export class OrderController {
 
         if (flashSaleInfo && flashSaleInfo.salePrice > 0 && flashSaleInfo.salePrice < basePrice) {
           if (userId && userId !== 'anonymous') {
-            let boughtToday = 0;
+            let boughtToday: number;
             try {
               const startOfDay = new Date();
               startOfDay.setHours(0, 0, 0, 0);
@@ -405,13 +405,13 @@ export class OrderController {
       if (verifiedRegularItems.length > 0) {
         axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/record-purchase`, {
           items: verifiedRegularItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-        }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua flash sale thất bại:', e?.message));
+        }, { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua flash sale thất bại:', e?.message));
       }
 
       if (verifiedCombos.length > 0) {
         axios.post(`${DISCOUNT_SERVICE_URL}/combos/record-purchase`, {
           combos: verifiedCombos.map((c) => ({ comboId: c.comboId, quantity: c.quantity })),
-        }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua combo thất bại:', e?.message));
+        }, { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua combo thất bại:', e?.message));
       }
     } catch (dbError) {
       if (dbError instanceof HttpException) {
@@ -655,7 +655,7 @@ export class OrderController {
             productId: item.product_id,
             quantity: item.quantity,
           })),
-        }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua flash sale thất bại:', e?.message));
+        }, { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua flash sale thất bại:', e?.message));
       }
 
       const comboOrderItems = (order.items || []).filter((item) => item.item_type === 'COMBO' && item.combo_id);
@@ -665,7 +665,7 @@ export class OrderController {
             comboId: item.combo_id,
             quantity: item.quantity,
           })),
-        }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua combo thất bại:', e?.message));
+        }, { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua combo thất bại:', e?.message));
       }
     }
 

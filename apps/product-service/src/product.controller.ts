@@ -190,7 +190,7 @@ export class ProductController {
       throw new NotFoundException('Không tìm thấy sản phẩm');
     }
     product.is_featured =
-      body?.is_featured !== undefined ? Boolean(body.is_featured) : !Boolean(product.is_featured);
+      body?.is_featured !== undefined ? Boolean(body.is_featured) : !product.is_featured;
     if (body?.curator_note !== undefined) {
       product.curator_note = body.curator_note;
     }

@@ -12,8 +12,8 @@ import { Voucher, DiscountType } from './entities/voucher.entity';
 import { VoucherUsage, UsageStatus } from './entities/voucher-usage.entity';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { FlashSaleCampaign } from './entities/flash-sale-campaign.entity';
-import { FlashSaleItem } from './entities/flash-sale-item.entity';
-import { CreateFlashSaleDto } from './dto/create-flash-sale.dto';
+import { FlashSaleItem, FlashSaleDiscountType } from './entities/flash-sale-item.entity';
+import { CreateFlashSaleDto, CreateFlashSaleItemDto } from './dto/create-flash-sale.dto';
 import { UpdateFlashSaleDto } from './dto/update-flash-sale.dto';
 import { Combo } from './entities/combo.entity';
 import { ComboItem } from './entities/combo-item.entity';
@@ -730,6 +730,59 @@ export class DiscountService implements OnModuleInit {
     }
   }
 
+  /**
+   * Chuẩn hoá giá của một món Flash Sale.
+   * - discount_type = PERCENT: sale_price = giá gốc × (1 − %/100)
+   * - discount_type = FIXED_AMOUNT: sale_price = giá gốc − số tiền giảm
+   * - Không gửi discount_type (dữ liệu cũ): dùng sale_price gửi lên, coi như giảm theo %.
+   * Giá sale luôn phải > 0 và < giá gốc.
+   */
+  private buildFlashSaleItemPricing(i: CreateFlashSaleItemDto) {
+    const originalPrice = Math.round(Number(i.original_price) || 0);
+    const name = i.product_name || i.product_id;
+    if (originalPrice <= 0) {
+      throw new BadRequestException(`Giá gốc của "${name}" phải lớn hơn 0.`);
+    }
+
+    let discountType = i.discount_type;
+    let discountValue = Number(i.discount_value);
+    let salePrice: number;
+
+    if (discountType === FlashSaleDiscountType.FIXED_AMOUNT) {
+      discountValue = Math.round(discountValue || 0);
+      salePrice = originalPrice - discountValue;
+    } else if (discountType === FlashSaleDiscountType.PERCENT) {
+      discountValue = Math.round(discountValue || 0);
+      if (discountValue <= 0 || discountValue >= 100) {
+        throw new BadRequestException(`Mức giảm % của "${name}" phải nằm trong khoảng 1 đến 99.`);
+      }
+      salePrice = Math.round(originalPrice * (1 - discountValue / 100));
+    } else {
+      salePrice = Math.round(Number(i.sale_price) || 0);
+      discountType = FlashSaleDiscountType.PERCENT;
+      discountValue = Math.max(0, Math.round(((originalPrice - salePrice) / originalPrice) * 100));
+    }
+
+    if (salePrice <= 0 || salePrice >= originalPrice) {
+      throw new BadRequestException(
+        `Giá sale của "${name}" phải lớn hơn 0đ và nhỏ hơn giá gốc ${originalPrice.toLocaleString('vi-VN')}đ.`,
+      );
+    }
+
+    return {
+      product_id: i.product_id,
+      product_name: i.product_name,
+      product_image: i.product_image,
+      original_price: originalPrice,
+      sale_price: salePrice,
+      discount_percentage: Math.round(((originalPrice - salePrice) / originalPrice) * 100),
+      discount_type: discountType,
+      discount_value: discountValue,
+      quantity_limit: Number(i.quantity_limit) || 50,
+      max_per_user: Number(i.max_per_user) || 2,
+    };
+  }
+
   async createFlashSale(dto: CreateFlashSaleDto) {
     const todayStr = this.toVnDateStr();
     const startDate =
@@ -772,17 +825,7 @@ export class DiscountService implements OnModuleInit {
       is_active: dto.is_active !== undefined ? dto.is_active : true,
       banner_url: dto.banner_url,
       items: (dto.items || []).map((i) =>
-        this.itemRepo.create({
-          product_id: i.product_id,
-          product_name: i.product_name,
-          product_image: i.product_image,
-          original_price: Number(i.original_price),
-          sale_price: Number(i.sale_price),
-          discount_percentage: Number(i.discount_percentage) || 0,
-          quantity_limit: Number(i.quantity_limit) || 50,
-          sold_count: 0,
-          max_per_user: Number(i.max_per_user) || 2,
-        }),
+        this.itemRepo.create({ ...this.buildFlashSaleItemPricing(i), sold_count: 0 }),
       ),
     });
 
@@ -864,20 +907,18 @@ export class DiscountService implements OnModuleInit {
     if (dto.banner_url !== undefined) campaign.banner_url = dto.banner_url;
 
     if (dto.items && Array.isArray(dto.items)) {
+      // Giữ lại số suất đã bán theo từng sản phẩm để sửa chiến dịch không làm "reset" giới hạn suất
+      const soldByProduct = new Map<string, number>();
+      for (const old of campaign.items || []) {
+        soldByProduct.set(String(old.product_id), Number(old.sold_count) || 0);
+      }
       if (campaign.items && campaign.items.length > 0) {
         await this.itemRepo.remove(campaign.items);
       }
       campaign.items = dto.items.map((i) =>
         this.itemRepo.create({
-          product_id: i.product_id,
-          product_name: i.product_name,
-          product_image: i.product_image,
-          original_price: Number(i.original_price),
-          sale_price: Number(i.sale_price),
-          discount_percentage: Number(i.discount_percentage) || 0,
-          quantity_limit: Number(i.quantity_limit) || 50,
-          sold_count: 0,
-          max_per_user: Number(i.max_per_user) || 2,
+          ...this.buildFlashSaleItemPricing(i),
+          sold_count: soldByProduct.get(String(i.product_id)) || 0,
         }),
       );
     }
@@ -989,6 +1030,8 @@ export class DiscountService implements OnModuleInit {
           original_price: Number(item.original_price),
           sale_price: Number(item.sale_price),
           discount_percentage: Number(item.discount_percentage) || 0,
+          discount_type: item.discount_type || FlashSaleDiscountType.PERCENT,
+          discount_value: Number(item.discount_value) || 0,
           quantity_limit: Number(item.quantity_limit) || 50,
           sold_count: Number(item.sold_count) || 0,
           max_per_user: Number(item.max_per_user) || 2,

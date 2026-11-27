@@ -6,8 +6,11 @@ import {
   IsNumber,
   IsArray,
   ValidateNested,
+  IsIn,
+  Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { FlashSaleDiscountType } from '../entities/flash-sale-item.entity';
 
 export class CreateFlashSaleItemDto {
   @IsString()
@@ -26,13 +29,23 @@ export class CreateFlashSaleItemDto {
   @IsNotEmpty()
   original_price: number;
 
+  /** Giá sale cuối. Có thể bỏ trống nếu gửi discount_type + discount_value (server tự tính). */
   @IsNumber()
-  @IsNotEmpty()
-  sale_price: number;
+  @IsOptional()
+  sale_price?: number;
 
   @IsNumber()
   @IsOptional()
   discount_percentage?: number;
+
+  @IsIn(Object.values(FlashSaleDiscountType))
+  @IsOptional()
+  discount_type?: FlashSaleDiscountType;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  discount_value?: number;
 
   @IsNumber()
   @IsOptional()

@@ -10,6 +10,12 @@ import {
 } from 'typeorm';
 import { FlashSaleCampaign } from './flash-sale-campaign.entity';
 
+/** Kiểu giảm giá của một món Flash Sale: theo % hoặc trừ thẳng số tiền (VNĐ). */
+export enum FlashSaleDiscountType {
+  PERCENT = 'PERCENT',
+  FIXED_AMOUNT = 'FIXED_AMOUNT',
+}
+
 @Entity('flash_sale_items')
 @Index(['campaign_id', 'product_id'])
 export class FlashSaleItem {
@@ -42,6 +48,13 @@ export class FlashSaleItem {
 
   @Column({ type: 'int', default: 0 })
   discount_percentage: number;
+
+  @Column({ type: 'varchar', length: 16, default: FlashSaleDiscountType.PERCENT })
+  discount_type: FlashSaleDiscountType;
+
+  /** Giá trị giảm: số % (PERCENT) hoặc số tiền VNĐ (FIXED_AMOUNT). */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  discount_value: number;
 
   @Column({ type: 'int', default: 50 })
   quantity_limit: number;

@@ -10,6 +10,21 @@ import { UpdateComboDto } from './dto/update-combo.dto';
 
 const getInternalSecret = () => requireEnv('INTERNAL_SECRET');
 
+/** Chỉ ADMIN (qua API Gateway gắn header x-user-role) mới được quản lý Flash Sale / Combo. */
+function assertAdmin(req: any, action: string) {
+  if (req?.headers?.['x-user-role'] !== 'ADMIN') {
+    throw new ForbiddenException(`Chỉ ADMIN mới có quyền ${action}`);
+  }
+}
+
+/** Ghi nhận / hoàn lượt mua chỉ dành cho order-service gọi nội bộ (hoặc ADMIN). */
+function assertInternalOrAdmin(req: any) {
+  const isInternal = req?.headers?.['x-internal-secret'] === getInternalSecret();
+  if (!isInternal && req?.headers?.['x-user-role'] !== 'ADMIN') {
+    throw new ForbiddenException('Endpoint chỉ cho phép gọi nội bộ hoặc ADMIN');
+  }
+}
+
 @Controller()
 export class DiscountController {
   constructor(private readonly discountService: DiscountService) {}
@@ -135,40 +150,53 @@ export class DiscountController {
   }
 
   @Post(['flash-sales', 'discounts/flash-sales'])
-  createFlashSale(@Body() dto: CreateFlashSaleDto) {
+  createFlashSale(@Body() dto: CreateFlashSaleDto, @Req() req?: any) {
+    assertAdmin(req, 'tạo chiến dịch Flash Sale');
     return this.discountService.createFlashSale(dto);
   }
 
   @Patch(['flash-sales/:id', 'discounts/flash-sales/:id'])
-  updateFlashSale(@Param('id') id: string, @Body() dto: UpdateFlashSaleDto) {
+  updateFlashSale(@Param('id') id: string, @Body() dto: UpdateFlashSaleDto, @Req() req?: any) {
+    assertAdmin(req, 'sửa chiến dịch Flash Sale');
     return this.discountService.updateFlashSale(id, dto);
   }
 
   @Patch(['flash-sales/:id/toggle', 'discounts/flash-sales/:id/toggle'])
-  toggleFlashSale(@Param('id') id: string) {
+  toggleFlashSale(@Param('id') id: string, @Req() req?: any) {
+    assertAdmin(req, 'bật/tắt chiến dịch Flash Sale');
     return this.discountService.toggleFlashSale(id);
   }
 
   @Delete(['flash-sales/:id', 'discounts/flash-sales/:id'])
-  deleteFlashSale(@Param('id') id: string) {
+  deleteFlashSale(@Param('id') id: string, @Req() req?: any) {
+    assertAdmin(req, 'xoá chiến dịch Flash Sale');
     return this.discountService.deleteFlashSale(id);
   }
 
   @Post(['flash-sales/record-purchase', 'discounts/flash-sales/record-purchase'])
-  recordFlashSalePurchases(@Body('items') items: Array<{ productId: string; quantity: number }>) {
+  recordFlashSalePurchases(
+    @Body('items') items: Array<{ productId: string; quantity: number }>,
+    @Req() req?: any,
+  ) {
+    assertInternalOrAdmin(req);
     return this.discountService.recordFlashSalePurchases(items || []);
   }
 
   @Post(['flash-sales/rollback-purchase', 'discounts/flash-sales/rollback-purchase'])
-  rollbackFlashSalePurchases(@Body('items') items: Array<{ productId: string; quantity: number }>) {
+  rollbackFlashSalePurchases(
+    @Body('items') items: Array<{ productId: string; quantity: number }>,
+    @Req() req?: any,
+  ) {
+    assertInternalOrAdmin(req);
     return this.discountService.rollbackFlashSalePurchases(items || []);
   }
 
   // ==================== COMBO & BUNDLE DEALS ====================
 
   @Get(['combos', 'discounts/combos'])
-  getCombos(@Query('all') all?: string) {
+  getCombos(@Query('all') all?: string, @Req() req?: any) {
     if (all === 'true') {
+      assertAdmin(req, 'xem toàn bộ danh sách combo');
       return this.discountService.getAllCombos();
     }
     return this.discountService.getPublicCombos();
@@ -180,32 +208,44 @@ export class DiscountController {
   }
 
   @Post(['combos', 'discounts/combos'])
-  createCombo(@Body() dto: CreateComboDto) {
+  createCombo(@Body() dto: CreateComboDto, @Req() req?: any) {
+    assertAdmin(req, 'tạo combo');
     return this.discountService.createCombo(dto);
   }
 
   @Patch(['combos/:id', 'discounts/combos/:id'])
-  updateCombo(@Param('id') id: string, @Body() dto: UpdateComboDto) {
+  updateCombo(@Param('id') id: string, @Body() dto: UpdateComboDto, @Req() req?: any) {
+    assertAdmin(req, 'sửa combo');
     return this.discountService.updateCombo(id, dto);
   }
 
   @Patch(['combos/:id/toggle', 'discounts/combos/:id/toggle'])
-  toggleCombo(@Param('id') id: string) {
+  toggleCombo(@Param('id') id: string, @Req() req?: any) {
+    assertAdmin(req, 'bật/tắt combo');
     return this.discountService.toggleCombo(id);
   }
 
   @Delete(['combos/:id', 'discounts/combos/:id'])
-  deleteCombo(@Param('id') id: string) {
+  deleteCombo(@Param('id') id: string, @Req() req?: any) {
+    assertAdmin(req, 'xoá combo');
     return this.discountService.deleteCombo(id);
   }
 
   @Post(['combos/record-purchase', 'discounts/combos/record-purchase'])
-  recordComboPurchases(@Body('combos') combos: Array<{ comboId: string; quantity: number }>) {
+  recordComboPurchases(
+    @Body('combos') combos: Array<{ comboId: string; quantity: number }>,
+    @Req() req?: any,
+  ) {
+    assertInternalOrAdmin(req);
     return this.discountService.recordComboPurchases(combos || []);
   }
 
   @Post(['combos/rollback-purchase', 'discounts/combos/rollback-purchase'])
-  rollbackComboPurchases(@Body('combos') combos: Array<{ comboId: string; quantity: number }>) {
+  rollbackComboPurchases(
+    @Body('combos') combos: Array<{ comboId: string; quantity: number }>,
+    @Req() req?: any,
+  ) {
+    assertInternalOrAdmin(req);
     return this.discountService.rollbackComboPurchases(combos || []);
   }
 

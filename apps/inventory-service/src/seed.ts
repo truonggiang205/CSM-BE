@@ -61,7 +61,7 @@ async function runSeed() {
   const branchRepo = dataSource.getRepository(Branch);
 
   for (const b of seedBranches) {
-    let existing = await branchRepo.findOne({ where: { id: b.id } });
+    const existing = await branchRepo.findOne({ where: { id: b.id } });
     if (!existing) {
       const newB = branchRepo.create(b);
       await branchRepo.save(newB);
