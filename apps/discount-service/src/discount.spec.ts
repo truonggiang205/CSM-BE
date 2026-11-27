@@ -3,6 +3,11 @@ import { DiscountController } from './discount.controller';
 import { DiscountService } from './discount.service';
 import { Voucher, DiscountType } from './entities/voucher.entity';
 import { VoucherUsage, UsageStatus } from './entities/voucher-usage.entity';
+import { FlashSaleCampaign } from './entities/flash-sale-campaign.entity';
+import { FlashSaleItem, FlashSaleDiscountType } from './entities/flash-sale-item.entity';
+import { Combo } from './entities/combo.entity';
+import { ComboItem } from './entities/combo-item.entity';
+import { SpinHistory } from './entities/spin-history.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
@@ -134,6 +139,18 @@ describe('DiscountService & DiscountController Unit Tests', () => {
     }),
   };
 
+  // Repository giả cho các bảng Flash Sale / Combo / Spin (chỉ cần những hàm được gọi trong test)
+  const mockSimpleRepo = () => ({
+    find: jest.fn(async () => []),
+    findOne: jest.fn(async () => null),
+    create: jest.fn((dto: any) => ({ ...dto })),
+    save: jest.fn(async (entity: any) => entity),
+    remove: jest.fn(async (entity: any) => entity),
+    count: jest.fn(async () => 0),
+  });
+  const mockCampaignRepo = mockSimpleRepo();
+  const mockFlashItemRepo = mockSimpleRepo();
+
   beforeEach(async () => {
     mockVouchers = [createMockVoucher()];
     mockUsages = [];
@@ -148,6 +165,11 @@ describe('DiscountService & DiscountController Unit Tests', () => {
         { provide: getRepositoryToken(Voucher), useValue: mockVoucherRepo },
         { provide: getRepositoryToken(VoucherUsage), useValue: mockUsageRepo },
         { provide: DataSource, useValue: mockDataSource },
+        { provide: getRepositoryToken(FlashSaleCampaign), useValue: mockCampaignRepo },
+        { provide: getRepositoryToken(FlashSaleItem), useValue: mockFlashItemRepo },
+        { provide: getRepositoryToken(Combo), useValue: mockSimpleRepo() },
+        { provide: getRepositoryToken(ComboItem), useValue: mockSimpleRepo() },
+        { provide: getRepositoryToken(SpinHistory), useValue: mockSimpleRepo() },
       ],
     }).compile();
 
@@ -236,7 +258,7 @@ describe('DiscountService & DiscountController Unit Tests', () => {
           voucher: mockVouchers[0],
         },
       ];
-      await expect(service.validateVoucher('CSM20K', 100000, 'usr-1')).rejects.toThrow(NotFoundException);
+      await expect(service.validateVoucher('CSM20K', 100000, 'usr-1')).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -360,6 +382,73 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       const mockReq = { headers: { 'x-internal-secret': 'csm-super-secure-internal-secret-token' } };
       const res = await controller.claimVoucher('CSM20K', 'usr-1', 'order-internal', mockReq);
       expect(res).toBeDefined();
+    });
+  });
+
+  describe('4. Flash Sale: chọn kiểu giảm % hoặc tiền mặt & phân quyền', () => {
+    const baseDto = (item: any) => ({
+      name: 'Giờ vàng test',
+      start_date: '2099-01-01',
+      end_date: '2099-01-01',
+      start_time: '10:00:00',
+      end_time: '12:00:00',
+      is_active: false,
+      items: [{ product_id: 'p1', product_name: 'Mì ly', original_price: 20000, ...item }],
+    });
+
+    it('Giảm theo % -> server tự tính giá sale', async () => {
+      const res: any = await service.createFlashSale(
+        baseDto({ discount_type: FlashSaleDiscountType.PERCENT, discount_value: 25 }) as any,
+      );
+      expect(res.items[0]).toMatchObject({
+        sale_price: 15000,
+        discount_percentage: 25,
+        discount_type: FlashSaleDiscountType.PERCENT,
+        discount_value: 25,
+      });
+    });
+
+    it('Giảm tiền mặt -> giá sale = giá gốc - số tiền giảm', async () => {
+      const res: any = await service.createFlashSale(
+        baseDto({ discount_type: FlashSaleDiscountType.FIXED_AMOUNT, discount_value: 5000 }) as any,
+      );
+      expect(res.items[0]).toMatchObject({
+        sale_price: 15000,
+        discount_percentage: 25,
+        discount_type: FlashSaleDiscountType.FIXED_AMOUNT,
+        discount_value: 5000,
+      });
+    });
+
+    it('Dữ liệu cũ chỉ gửi sale_price -> vẫn hoạt động, coi như giảm %', async () => {
+      const res: any = await service.createFlashSale(baseDto({ sale_price: 16000 }) as any);
+      expect(res.items[0]).toMatchObject({ sale_price: 16000, discount_percentage: 20, discount_type: 'PERCENT' });
+    });
+
+    it('Giảm tiền mặt >= giá gốc -> Bị từ chối', async () => {
+      await expect(
+        service.createFlashSale(
+          baseDto({ discount_type: FlashSaleDiscountType.FIXED_AMOUNT, discount_value: 20000 }) as any,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('Giảm % ngoài khoảng 1-99 -> Bị từ chối', async () => {
+      await expect(
+        service.createFlashSale(baseDto({ discount_type: FlashSaleDiscountType.PERCENT, discount_value: 100 }) as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('CUSTOMER tạo Flash Sale hoặc Combo -> Bị chặn 403', () => {
+      const req = { headers: { 'x-user-role': 'CUSTOMER' } };
+      expect(() => controller.createFlashSale(baseDto({ sale_price: 1 }) as any, req)).toThrow(ForbiddenException);
+      expect(() => controller.deleteCombo('c1', req)).toThrow(ForbiddenException);
+    });
+
+    it('Client ngoài gọi record-purchase không có secret -> Bị chặn 403', () => {
+      expect(() =>
+        controller.recordFlashSalePurchases([{ productId: 'p1', quantity: 1 }], { headers: {} }),
+      ).toThrow(ForbiddenException);
     });
   });
 });

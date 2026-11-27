@@ -39,7 +39,7 @@ describe('Inventory Service Concurrency Test (Reserve-stock dong thoi khong ban 
           connect: jest.fn().mockResolvedValue(undefined),
           startTransaction: jest.fn().mockImplementation(async () => {
             // Giả lập khóa hàng đợi giao dịch pessimistic_write
-            let currentLock = dbLockPromise;
+            const currentLock = dbLockPromise;
             let acquireLock: () => void;
             dbLockPromise = new Promise((resolve) => {
               acquireLock = resolve;
