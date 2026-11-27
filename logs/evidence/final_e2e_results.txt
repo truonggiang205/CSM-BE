@@ -1,0 +1,164 @@
+﻿======================================================
+🚀 BẮT ĐẦU CHẠY BỘ KIỂM THỬ E2E TẠI: http://localhost:8000/api/v1
+🧹 Chế độ dọn dẹp dữ liệu test (--cleanup): ĐƯỢC BẬT
+======================================================
+
+--- NHÓM 1: XÁC THỰC, PHÂN QUYỀN & TOKEN LIFECYCLE ---
+
+--- NHÓM 2: QUẢN LÝ CHI NHÁNH & HAVERSINE NEAREST ---
+
+--- NHÓM 3: SẢN PHẨM, NHẬP KHO ĐA CHI NHÁNH & BẢO MẬT ---
+
+--- NHÓM 4: ĐỒNG THỜI & IDEMPOTENCY KHO HÀNG ---
+
+--- NHÓM 5: VALIDATION ĐẶT HÀNG, STATE MACHINE & SAGA LIFECYCLE ---
+
+--- NHÓM 6: CSM-29 ORDER QUERY APIS & TEST KHOÁ CHI NHÁNH ---
+
+--- NHÓM 7: THANH TOÁN MÔ PHỎNG & BẢO MẬT CREATE PAYMENT ---
+
+--- Kiểm thử PAYMENT_SIMULATION=false bằng payment-service cục bộ tắt simulation ---
+
+--- NHÓM 8: TÌM KIẾM, LỌC SẢN PHẨM PHÍA SERVER, UPLOAD ẢNH & AN TOÀN HỆ THỐNG ---
+
+======================================================
+🧹 BẮT ĐẦU DỌN DẸP TOÀN DIỆN DỮ LIỆU KIỂM THỬ (--cleanup)...
+======================================================
+   ✨ Đã dọn dẹp 2 tài khoản test trong Auth DB
+   ✨ Đã dọn dẹp 7 đơn hàng kiểm thử trong Order DB
+   ✨ Đã hoàn trả & dọn dẹp 2 bản ghi tồn kho kiểm thử
+   ✨ Đã dọn dẹp chi nhánh kiểm thử br-test-1793537450405 trong Inventory DB
+   ✨ Đã dọn dẹp 1 sản phẩm kiểm thử trong Product DB
+✅ Hoàn tất dọn dẹp toàn bộ dữ liệu kiểm thử, đưa hệ thống về trạng thái sạch!
+
+
+======================================================
+📊 TỔNG KẾT KIỂM THỬ: 121/121 ca đạt (Khôi phục toàn diện & không xoá ca cũ)
+======================================================
+
+📋 DANH SÁCH CHI TIẾT TẤT CẢ CÁC CA KIỂM THỬ ĐÃ THỰC THI:
+  01. ✅ [PASS] [201] 1.1 Đăng ký tài khoản không chọn role -> Mặc định server gán role=CUSTOMER
+  02. ✅ [PASS] [201] 1.2 Đăng ký tài khoản cố tình truyền role=ADMIN -> Server ép về role=CUSTOMER
+  03. ✅ [PASS] [201] 1.3 Đăng nhập tài khoản CUSTOMER vừa đăng ký
+  04. ✅ [PASS] [201] 1.4 Đăng nhập tài khoản ADMIN (seed account admin@csm.vn)
+  05. ✅ [PASS] [201] 1.5 Đăng nhập tài khoản CUSTOMER (seed account customer@csm.vn)
+  06. ✅ [PASS] [201] 1.6 Đăng nhập tài khoản BRANCH_MANAGER (seed account manager.q1@csm.vn tại br-01)
+  07. ✅ [PASS] [401] 1.7 Đăng nhập sai mật khẩu -> Bị từ chối 401 Unauthorized
+  08. ✅ [PASS] [201] 1.8 Refresh token bằng Refresh Token hợp lệ -> Cấp Access Token mới (200 OK)
+  09. ✅ [PASS] [401] 1.9 Refresh token từ chối Access Token (bảo mật type claim check -> 401)
+  10. ✅ [PASS] [401] 1.10 Refresh token từ chối Refresh Token giả mạo/hỏng -> 401 Unauthorized
+  11. ✅ [PASS] [200] 2.1 Haversine: Tìm chi nhánh gần nhất theo toạ độ GPS hợp lệ (GET /branches/nearest)
+  12. ✅ [PASS] [400] 2.2 Haversine: Tìm chi nhánh gần nhất khi thiếu toạ độ lat/lng -> Từ chối 400 Bad Request
+  13. ✅ [PASS] [400] 2.3 Haversine: Tìm chi nhánh gần nhất khi toạ độ vượt giới hạn (lat=999) -> Từ chối 400
+  14. ✅ [PASS] [200] 2.4 Lấy danh sách toàn bộ chi nhánh đang hoạt động (GET /branches)
+  15. ✅ [PASS] [200] 2.5 Lấy thông tin chi tiết chi nhánh theo ID hợp lệ (GET /branches/br-01)
+  16. ✅ [PASS] [404] 2.6 Lấy chi nhánh với ID không tồn tại (GET /branches/br-non-existent) -> Từ chối 404
+  17. ✅ [PASS] [201] 2.7 Tạo chi nhánh kiểm thử mới bằng token ADMIN (POST /branches)
+  18. ✅ [PASS] [403] 2.8 CUSTOMER cố tạo chi nhánh mới -> Bị từ chối 403 Forbidden
+  19. ✅ [PASS] [200] 2.9 Cập nhật thông tin chi nhánh kiểm thử bằng token ADMIN (PUT /branches/:id)
+  20. ✅ [PASS] [403] 2.10 CUSTOMER cố cập nhật chi nhánh -> Bị từ chối 403 Forbidden
+  21. ✅ [PASS] [409] 2.11 Xoá chi nhánh còn tồn kho hàng hoá (br-01) -> Bị từ chối 409 Conflict
+  22. ✅ [PASS] [200] 2.12 Xoá mềm (vô hiệu hoá) chi nhánh kiểm thử trống bằng ADMIN -> Thành công 200 OK
+  23. ✅ [PASS] [403] 2.13 CUSTOMER cố xoá chi nhánh -> Bị từ chối 403 Forbidden
+  24. ✅ [PASS] [201] 3.1 Tạo sản phẩm mẫu kiểm thử bằng token ADMIN (POST /products)
+  25. ✅ [PASS] [201] 3.2 Nhập 100 sản phẩm vào kho chi nhánh br-01 bằng token ADMIN (POST /inventory/add-stock)
+  26. ✅ [PASS] [201] 3.2b Nhập 50 sản phẩm vào kho chi nhánh br-02 bằng token ADMIN (POST /inventory/add-stock)
+  27. ✅ [PASS] [403] 3.3 Token CUSTOMER + header x-user-role: ADMIN gọi POST /inventory/add-stock -> Phải 403
+  28. ✅ [PASS] [403] 3.4 Token CUSTOMER thông thường gọi POST /inventory/add-stock -> Bị từ chối 403 Forbidden
+  29. ✅ [PASS] [403] 3.5 BRANCH_MANAGER nhập kho cho chi nhánh khác chi nhánh quản lý (br-02 != br-01) -> Phải 403
+  30. ✅ [PASS] [200] 4.1 Idempotency kho: 2 request reserve-stock đồng thời cùng referenceId chỉ giữ hàng 1 lần
+  31. ✅ [PASS] [200] 4.2 Concurrency kho: 5 request reserve-stock đồng thời với referenceId khác nhau đều thành công
+  32. ✅ [PASS] [400] 4.3 Đặt hàng khi vượt quá tồn kho khả dụng (số lượng 999999) -> Từ chối 400 Bad Request
+  33. ✅ [PASS] [400] 5.1a POST /orders validation: thiếu items -> Từ chối 400 Bad Request
+  34. ✅ [PASS] [400] 5.1b POST /orders validation: thiếu branchId -> Từ chối 400 Bad Request
+  35. ✅ [PASS] [400] 5.1c POST /orders validation: quantity <= 0 -> Từ chối 400 Bad Request
+  36. ✅ [PASS] [404] 5.1d POST /orders validation: product không tồn tại -> Từ chối 404 Not Found
+  37. ✅ [PASS] [400] 5.1e POST /orders validation: branchId không tồn tại (br-99999) -> Bị từ chối 400 Bad Request
+  38. ✅ [PASS] [201] 5.2 Tạo Đơn Hàng 1 (COD, số lượng 3) -> Khởi tạo ở trạng thái PENDING
+  39. ✅ [PASS] [200] 5.3 [Trước duyệt] Tồn kho br-01 khi Đơn 1 đang PENDING (reserved_quantity tăng 3 đơn vị)
+  40. ✅ [PASS] [200] 5.4 ADMIN duyệt Đơn 1: PENDING -> CONFIRMED (kích hoạt confirm-deduct)
+  41. ✅ [PASS] [200] 5.5 [Sau duyệt] Tồn kho br-01 sau khi CONFIRMED (quantity giảm 3, reserved_quantity giải phóng)
+  42. ✅ [PASS] [200] 5.6 [Bản ghi StockTransaction] Xác nhận các giao dịch RESERVE và OUT của Đơn 1
+  43. ✅ [PASS] [400] 5.7a Chuyển trạng thái sai quy tắc: CONFIRMED -> PENDING -> Từ chối 400 Bad Request
+  44. ✅ [PASS] [200] 5.7b State machine: CONFIRMED -> PAID bởi ADMIN -> Thành công 200 OK
+  45. ✅ [PASS] [200] 5.7c State machine: PAID -> SHIPPED bởi ADMIN -> Thành công 200 OK
+  46. ✅ [PASS] [400] 5.7d State machine: SHIPPED là trạng thái cuối (cố chuyển sang CANCELLED) -> Từ chối 400 Bad Request
+  47. ✅ [PASS] [403] 5.8 CUSTOMER cố huỷ đơn khi đã qua PENDING -> Bị từ chối 403 Forbidden
+  48. ✅ [PASS] [201] 5.9 Tạo Đơn Hàng 2 (COD, số lượng 5) để thử nghiệm huỷ đơn PENDING
+  49. ✅ [PASS] [200] 5.10 [Trước huỷ] Tồn kho khi Đơn 2 đang PENDING (reserved_quantity tăng 5 đơn vị)
+  50. ✅ [PASS] [200] 5.11 CUSTOMER huỷ Đơn 2 của chính mình: PENDING -> CANCELLED (kích hoạt release-stock)
+  51. ✅ [PASS] [200] 5.12 [Sau huỷ] Tồn kho sau khi huỷ Đơn 2 (reserved_quantity đã được giải phóng hoàn toàn)
+  52. ✅ [PASS] [200] 5.13 [Bản ghi StockTransaction] Xác nhận các giao dịch RESERVE và CANCEL_RESERVE của Đơn 2
+  53. ✅ [PASS] [400] 5.13b State machine: CANCELLED là trạng thái cuối (cố chuyển sang CONFIRMED) -> Từ chối 400 Bad Request
+  54. ✅ [PASS] [200] 5.14 Mô phỏng Saga bù trừ: Giữ kho -> Giả lập lưu đơn lỗi -> Kích hoạt release-stock khôi phục kho
+  55. ✅ [PASS] [200] 5.15a State machine: BRANCH_MANAGER br-01 cập nhật đơn PENDING -> CONFIRMED -> Thành công 200 OK
+  56. ✅ [PASS] [200] 5.15b State machine: ADMIN cập nhật status đơn CONFIRMED -> PAID -> Thành công 200 OK
+  57. ✅ [PASS] [201] CSM-29 [1.0]: Tạo đơn hàng COD mới cho khách hàng để kiểm thử truy vấn độc lập (status ban đầu: PENDING)
+  58. ✅ [PASS] [200] CSM-29 [1.1a]: GET /orders/my - Trả về đơn của khách hàng dạng chuẩn { items, total, page, limit, totalPages }
+  59. ✅ [PASS] [200] CSM-29 [1.1b]: GET /orders/my?status=PENDING - Lọc theo trạng thái PENDING thành công
+  60. ✅ [PASS] [200] CSM-29 [1.1c]: ADMIN xác nhận đơn hàng COD của CSM-29: PENDING -> CONFIRMED (xác nhận trạng thái rõ ràng)
+  61. ✅ [PASS] [200] CSM-29 [1.1d]: GET /orders/my?status=CONFIRMED - Lọc theo trạng thái CONFIRMED thành công
+  62. ✅ [PASS] [400] CSM-29 [1.5]: GET /orders/my?status=INVALID_STATUS - Từ chối 400 Bad Request
+  63. ✅ [PASS] [403] CSM-29 [1.2a]: GET /orders - CUSTOMER gọi danh sách quản trị -> Bị từ chối 403 Forbidden
+  64. ✅ [PASS] [200] CSM-29 [1.2b]: GET /orders (ADMIN) - Phân trang limit=1 trả về đúng 1 đơn hàng và totalPages chuẩn
+  65. ✅ [PASS] [200] CSM-29 [1.2c]: GET /orders (ADMIN) - Lọc theo status=CONFIRMED
+  66. ✅ [PASS] [200] CSM-29 [1.2d]: GET /orders (ADMIN) - Lọc theo branchId=br-01
+  67. ✅ [PASS] [200] CSM-29 [1.2e]: GET /orders (ADMIN) - Tìm kiếm theo search mã đơn hàng
+  68. ✅ [PASS] [200] CSM-29 [1.2f]: GET /orders (ADMIN) - Lọc theo khoảng ngày hợp lệ (fromDate & toDate) -> 200 OK
+  69. ✅ [PASS] [400] CSM-29 [1.2g]: GET /orders (ADMIN) - Lọc khoảng ngày sai định dạng (fromDate=invalid) -> Từ chối 400 Bad Request
+  70. ✅ [PASS] [400] CSM-29 [1.2h]: GET /orders (ADMIN) - Lọc khoảng ngày vô lý (fromDate > toDate) -> Từ chối 400 Bad Request
+  71. ✅ [PASS] [200] CSM-29 [1.2i]: GET /orders - ADMIN xem toàn bộ đơn kèm phân trang chuẩn { items, total, page, limit, totalPages }
+  72. ✅ [PASS] [201] 5. (Khoá chi nhánh [5.1]): Tạo đơn hàng tại chi nhánh khác (br-02) bằng token CUSTOMER
+  73. ✅ [PASS] [200] 5. (Khoá chi nhánh [5.2]): MANAGER br-01 gọi GET /orders KHÔNG thấy đơn br-02 (total < ADMIN)
+  74. ✅ [PASS] [403] 5. (Khoá chi nhánh [5.3]): MANAGER br-01 gọi GET /orders/:id của đơn br-02 -> Bị từ chối 403 Forbidden
+  75. ✅ [PASS] [200] 5. (Khoá chi nhánh [5.4]): ADMIN gọi GET /orders/:id của đơn br-02 -> Thành công 200 OK
+  76. ✅ [PASS] [403] CSM-29 [1.4a]: GET /orders/:id - CUSTOMER xem đơn người khác -> Bị từ chối 403 Forbidden
+  77. ✅ [PASS] [200] CSM-29 [1.4b]: GET /orders/:id - CUSTOMER xem đơn của chính mình -> Thành công 200 OK
+  78. ✅ [PASS] [401] 1. (Create Payment [1.1]): POST /payments/create không có JWT -> Từ chối 401 Unauthorized
+  79. ✅ [PASS] [403] 1. (Create Payment [1.2]): POST /payments/create bằng JWT người khác -> Bị từ chối 403 Forbidden
+  80. ✅ [PASS] [201] 1. (Create Payment [1.3]): POST /payments/create bằng chính chủ đơn -> Thành công 201 Created
+  81. ✅ [PASS] [201] 1. (Create Payment [1.4]): POST /payments/create bằng token ADMIN -> Thành công 201 Created
+  82. ✅ [PASS] [201] Giai đoạn 2 [2.1]: Tạo đơn hàng online MOMO nhận link thanh toán mô phỏng chứa JWT token
+  83. ✅ [PASS] [200] Giai đoạn 2 [2.2a]: GET trang HTML xác nhận mô phỏng thanh toán hợp lệ (200 OK)
+  84. ✅ [PASS] [200] Giai đoạn 2 [2.2b]: Xác nhận sau khi GET HTML mô phỏng, đơn hàng vẫn ở trạng thái PENDING (chưa bị thanh toán)
+  85. ✅ [PASS] [401] Giai đoạn 2 [2.3]: Token sai hoặc hỏng -> Từ chối 401 Unauthorized
+  86. ✅ [PASS] [401] Giai đoạn 2 [2.4]: Token đã hết hạn -> Từ chối 401 Unauthorized
+  87. ✅ [PASS] [403] Giai đoạn 2 [2.5]: Token của đơn hàng khác (mismatched) -> Từ chối 403 Forbidden
+  88. ✅ [PASS] [201] Giai đoạn 2 [2.6a]: Tạo đơn hàng COD để kiểm thử bảo mật
+  89. ✅ [PASS] [400] Giai đoạn 2 [2.6b]: Gọi simulate-success cho đơn hàng COD -> Từ chối 400 Bad Request
+  90. ✅ [PASS] [200] Giai đoạn 2 [2.7a]: Ghi nhận tồn kho chi nhánh trước khi thanh toán đơn online MOMO
+  91. ✅ [PASS] [200] Giai đoạn 2 [2.7b]: Kích hoạt mô phỏng thanh toán online LẦN 1 -> Đơn chuyển CONFIRMED & PAID và trừ kho
+  92. ✅ [PASS] [200] Giai đoạn 2 [2.7c]: Xác nhận tồn kho thực tế đã bị trừ 2 đơn vị sau LẦN 1 thanh toán thành công
+  93. ✅ [PASS] [200] Giai đoạn 2 [2.8a]: Gọi mô phỏng thanh toán online LẦN 2 (Idempotency) -> Trả về 200 và giữ nguyên trạng thái
+  94. ✅ [PASS] [200] Giai đoạn 2 [2.8b]: Xác nhận tồn kho KHÔNG bị trừ lần 2 sau khi gọi lại simulate-success
+  95. ✅ [PASS] [404] Giai đoạn 2 [2.9a]: POST /payments/simulate-success khi server tắt PAYMENT_SIMULATION=false -> Trả về 404 Not Found
+  96. ✅ [PASS] [404] Giai đoạn 2 [2.9b]: GET /payments/simulate-success/:orderId khi server tắt PAYMENT_SIMULATION=false -> Trả về 404 Not Found
+  97. ✅ [PASS] [404] Giai đoạn 2 [2.9c]: Request gửi cờ bật giả (x-payment-simulation: true) khi server tắt vẫn nhận 404
+  98. ✅ [PASS] [200] 8.1 GET /products - Cấu trúc phân trang chuẩn { items, total, page, limit, totalPages }
+  99. ✅ [PASS] [200] 8.2 GET /products?q=... - Tìm kiếm sản phẩm theo tên
+  100. ✅ [PASS] [200] 8.3 GET /products?q=... - Tìm kiếm sản phẩm theo SKU
+  101. ✅ [PASS] [200] 8.4 GET /products - Lọc theo khoảng giá (minPrice & maxPrice)
+  102. ✅ [PASS] [200] 8.5 GET /products?sort=price_asc - Sắp xếp theo giá tăng dần
+  103. ✅ [PASS] [200] 8.6 GET /products?sort=price_desc - Sắp xếp theo giá giảm dần
+  104. ✅ [PASS] [200] 8.7 GET /products?sort=name - Sắp xếp theo tên sản phẩm (A-Z)
+  105. ✅ [PASS] [400] 8.8 GET /products?minPrice=-100 - minPrice âm -> Từ chối 400 Bad Request
+  106. ✅ [PASS] [400] 8.9 GET /products - minPrice > maxPrice vô lý -> Từ chối 400 Bad Request
+  107. ✅ [PASS] [400] 8.10 GET /products?sort=invalid_sort - sort không hợp lệ -> Từ chối 400 Bad Request
+  108. ✅ [PASS] [400] 8.11 GET /products?page=0 - page nhỏ hơn 1 -> Từ chối 400 Bad Request
+  109. ✅ [PASS] [400] 8.12 GET /products?limit=-5 - limit nhỏ hơn 1 -> Từ chối 400 Bad Request
+  110. ✅ [PASS] [401] 8.13 POST /products/:id/image không gửi token -> Từ chối 401 Unauthorized
+  111. ✅ [PASS] [403] 8.14 POST /products/:id/image bằng token CUSTOMER -> Bị từ chối 403 Forbidden
+  112. ✅ [PASS] [403] 8.15 POST /products/:id/image bằng token BRANCH_MANAGER -> Bị từ chối 403 Forbidden
+  113. ✅ [PASS] [400] 8.16 POST /products/:id/image với tệp sai định dạng (.exe) -> Từ chối 400 Bad Request
+  114. ✅ [PASS] [400] 8.17 POST /products/:id/image với file dung lượng quá 2MB -> Từ chối 400 Bad Request
+  115. ✅ [PASS] [201] 8.18 POST /products/:id/image bằng ADMIN với ảnh PNG hợp lệ (< 2MB) -> Thành công, trả image_url
+  116. ✅ [PASS] [200] 8.19 GET /products/:id - Xác nhận image_url đã cập nhật đường dẫn tương đối trong DB
+  117. ✅ [PASS] [200] 8.20 GET ảnh trực tiếp qua Gateway (GET /uploads/:filename) -> Phục vụ công khai 200 OK
+  118. ✅ [PASS] [200] 8.21 GET ảnh qua tiền tố api/v1 (GET /api/v1/uploads/:filename) -> Phục vụ công khai 200 OK
+  119. ✅ [PASS] [400] 8.22 Tấn công Path Traversal: GET /uploads/..%2F..%2Fetc%2Fpasswd -> Bị chặn 400 Bad Request
+  120. ✅ [PASS] [400] 8.23 Tấn công Path Traversal: GET /uploads/%2e%2e/uploads -> Bị chặn 400 Bad Request
+  121. ✅ [PASS] [404] 8.24 GET ảnh không tồn tại (GET /uploads/non-existent-img.png) -> Trả về 404 Not Found
+
+Tổng số ca kiểm thử đã thực thi: 121 ca
+
+🎉 Tất cả 121/121 ca kiểm thử đều hoàn thành xuất sắc (PASS)!

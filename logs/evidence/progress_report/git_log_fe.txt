@@ -1,0 +1,41 @@
+﻿d0d2854 Merge pull request #13 from truonggiang205/feature/ui-polish
+499a4b1 docs: add before and after responsive screenshots for 12 routes at 375px, 768px, and 1280px
+7a0a36b test(e2e): setup playwright test suite with 4 real-stack verification scenarios
+3e24172 fix(branch): avoid auto-opening branch modal on auth routes
+bfb2dda feat(auth): add register page, real profile view from /auth/profile, and session refresh handling
+58d7061 feat(a11y): add keyboard skip link, aria labels, focus visibility, and reduced-motion support
+bb2d7a8 feat(ui): pastel skeletons, retryable error states, global ErrorBoundary, and 404 page
+7915fc9 feat(cart): safe try-catch localStorage persistence, instant quantity updates, branch stock warnings, and subtotal calculation
+a288706 feat(products): debounced search, category and price filters, sorting, and empty state with documented client-side filtering limitation
+aaa775e perf(build): optimize vendor manualChunks, split recharts and d3, keep all chunks under 500kB
+2bbdb5f feat(ui): responsive and mobile layout polish, collapsible menus, and admin cards
+8a10ffd Merge pull request #12 from truonggiang205/feat/polish
+d5d07cd Merge pull request #11 from truonggiang205/feat/brand-sections
+3ea8428 Merge pull request #10 from truonggiang205/feat/cart-conversion
+35599d7 Merge pull request #9 from truonggiang205/feat/wow-homepage
+ff85db4 feat(polish): toi uu chuyen trang, ambient background, tap target mobile va a11y
+acf57fc feat(home): them cac khoi CSM Picks, Moi len ke, Combo va Vong quay may man
+8b7a524 feat(cart): nang cap hien thi gio hang, freeship chay so va goi y mua kem
+cca53f2 feat(products): upgrade ProductCard with 3D tilt, smooth hover transitions and 1s add-to-cart confirmation
+7181bee feat(home): implement motion system and real-time hero greeting with parallax
+aefba44 Merge pull request #8 from truonggiang205/new
+35fa5f3 feat(ui): overhaul ecommerce UI and resolve image fallback, header and card inconsistencies
+cb21c9b Merge pull request #7 from truonggiang205/feature/order-ui-sprint3
+5fc0fef feat(order-ui): guard dev credentials in production and auto-poll order payment status
+3e0e48e feat(order-ui): CSM-39 admin order management with state machine and branch filtering
+7502875 feat(order-ui): CSM-37 customer order list and order detail with cancel and repayment
+b58b47e feat(order-ui): CSM-36 checkout with real api and payment redirection
+bd98c5a Merge pull request #6 from truonggiang205/feature/sprint3-tech-fixes
+5d0fad5 chore(docker): use node 22, add dockerignore, drop obsolete compose version
+d080cb9 feat(docker): add multi-stage Dockerfile and nginx configuration for FE
+012b7dc refactor(fe): restrict dev roles, use id product url, sanitize ratings
+6b3d908 feat(branch): connect nearest branch selector to haversine api
+9d49974 feat(auth): add refreshToken support and auto-refresh interceptor in apiClient
+e2776a5 fix(checkout): use apiClient instead of hardcoded fetch URL and bind selected branch
+556840d Merge pull request #5 from truonggiang205/feat/sprint2-multi-branch-stock
+f0105ca fix(ui): use createPortal for modals and fix price display in hero banner
+0f82d1f feat(inventory): add branch inventory dashboard with stats, recharts and restock modal
+9f5b293 feat(client): add real-time branch inventory and branch selector on product detail
+1397698 feat(client): integrate home and product list with branch inventory and filtering
+7b8cef5 feat(client): add branch selector with geolocation and store persistence
+130b452 UI

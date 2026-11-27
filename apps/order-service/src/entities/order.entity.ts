@@ -1,0 +1,53 @@
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, Index } from 'typeorm';
+import { OrderItem } from './order-item.entity';
+
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  PAID = 'PAID',
+  SHIPPED = 'SHIPPED',
+  CANCELLED = 'CANCELLED',
+}
+
+@Entity('orders')
+@Index(['user_id'])
+@Index(['branch_id'])
+@Index(['status'])
+@Index(['created_at'])
+export class Order {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  user_id: string; // Ref to auth-service
+
+  @Column()
+  branch_id: string; // Ref to branch in inventory-service
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  total_amount: number;
+
+  @Column({ type: 'varchar', length: 50, default: 'COD' })
+  payment_method: string;
+
+  @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
+  status: OrderStatus;
+
+  @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
+  items: OrderItem[];
+
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  subtotal_amount?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  discount_amount?: number;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  voucher_code?: string | null;
+}

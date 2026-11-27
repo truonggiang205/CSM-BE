@@ -1,0 +1,117 @@
+﻿
+> csm-be@1.0.0 seed:demo
+> ts-node scripts/seed-data.ts
+
+======================================================
+🚀 BẮT ĐẦU SEED BỘ DỮ LIỆU DEMO ĐỒ ÁN CSM (IDEMPOTENT)
+======================================================
+
+📌 Bước 1: Khởi tạo/Cập nhật Tài khoản người dùng (Auth DB)...
+  🔄 Cập nhật tài khoản: admin@csm.vn [ADMIN]
+  🔄 Cập nhật tài khoản: manager.q1@csm.vn [BRANCH_MANAGER]
+  ➕ Tạo mới tài khoản: manager.q2@csm.vn [BRANCH_MANAGER]
+  ➕ Tạo mới tài khoản: customer1@csm.vn [CUSTOMER]
+  ➕ Tạo mới tài khoản: customer2@csm.vn [CUSTOMER]
+  🔄 Cập nhật tài khoản: customer@csm.vn [CUSTOMER]
+
+📌 Bước 2: Khởi tạo/Cập nhật 3 Chi nhánh TP.HCM (Inventory DB)...
+  🔄 Cập nhật toạ độ chi nhánh: [br-01] CSM Bến Nghé - Quận 1
+  🔄 Cập nhật toạ độ chi nhánh: [br-02] CSM Phú Mỹ Hưng - Quận 7
+  🔄 Cập nhật toạ độ chi nhánh: [br-03] CSM Hàng Xanh - Bình Thạnh
+
+📌 Bước 3: Khởi tạo/Cập nhật 5 Danh mục & 26 Sản phẩm (Product DB)...
+  ➕ Tạo danh mục mới: Đồ uống & Giải khát
+  ➕ Tạo danh mục mới: Bánh kẹo & Snack
+  ➕ Tạo danh mục mới: Mì & Thức ăn nhanh
+  ➕ Tạo danh mục mới: Sữa & Sản phẩm từ sữa
+  ➕ Tạo danh mục mới: Đồ dùng cá nhân & Tiện ích
+  ➕ Tạo sản phẩm: [SKU-DRK-001] Trà Sữa Trân Châu CSM (35,000đ)
+  ➕ Tạo sản phẩm: [SKU-DRK-002] Cà Phê Sữa Đá Sài Gòn (25,000đ)
+  ➕ Tạo sản phẩm: [SKU-DRK-003] Trà Đào Cam Sả Tươi (32,000đ)
+  ➕ Tạo sản phẩm: [SKU-DRK-004] Nước Tăng Lực Red Bull 250ml (15,000đ)
+  ➕ Tạo sản phẩm: [SKU-DRK-005] Nước Khoáng Thiên Nhiên La Vie 500ml (8,000đ)
+  ➕ Tạo sản phẩm: [SKU-DRK-006] Cà Phê Đen Đá Không Đường (20,000đ)
+  ➕ Tạo sản phẩm: [SKU-SNK-001] Snack Khoai Tây Lay's Vị Tảo Biển 56g (16,000đ)
+  ➕ Tạo sản phẩm: [SKU-SNK-002] Snack Bắp Cay Oishi 40g (8,000đ)
+  ➕ Tạo sản phẩm: [SKU-SNK-003] Bánh Quy Bơ Danisa 200g (55,000đ)
+  ➕ Tạo sản phẩm: [SKU-SNK-004] Kẹo Cao Su Cool Air Bạc Hà (12,000đ)
+  ➕ Tạo sản phẩm: [SKU-SNK-005] Bánh Que Pocky Chocolate 40g (18,000đ)
+  ➕ Tạo sản phẩm: [SKU-NDL-001] Mì Trộn Cay Indomie Mi Goreng (15,000đ)
+  ➕ Tạo sản phẩm: [SKU-NDL-002] Bánh Bao Xá Xíu Trứng Cút Nóng (22,000đ)
+  ➕ Tạo sản phẩm: [SKU-NDL-003] Mì Ly Hảo Hảo Tôm Chua Cay (12,000đ)
+  ➕ Tạo sản phẩm: [SKU-NDL-004] Cơm Nắm Onigiri Cá Hồi Mayonnaise (20,000đ)
+  ➕ Tạo sản phẩm: [SKU-NDL-005] Xúc Xích Phô Mai Vissan Nóng (16,000đ)
+  ➕ Tạo sản phẩm: [SKU-MLK-001] Sữa Tươi Tiệt Trùng Vinamilk Ít Đường 180ml (10,000đ)
+  ➕ Tạo sản phẩm: [SKU-MLK-002] Sữa Chua Uống Men Sống Probi 130ml (9,000đ)
+  ➕ Tạo sản phẩm: [SKU-MLK-003] Sữa Lúa Mạch Milo Hộp 180ml (11,000đ)
+  ➕ Tạo sản phẩm: [SKU-MLK-004] Sữa Hạt Óc Chó TH true NUT 180ml (14,000đ)
+  ➕ Tạo sản phẩm: [SKU-MLK-005] Sữa Chua Ăn Nha Đam Vinamilk 100g (8,000đ)
+  ➕ Tạo sản phẩm: [SKU-PER-001] Khăn Giấy Ướt Kháng Khuẩn CSM Gói 20 tờ (15,000đ)
+  ➕ Tạo sản phẩm: [SKU-PER-002] Gel Rửa Tay Khô Lifebuoy 50ml (25,000đ)
+  ➕ Tạo sản phẩm: [SKU-PER-003] Khẩu Trang Y Tế 4 Lớp Kháng Khuẩn (Gói 10 cái) (20,000đ)
+  ➕ Tạo sản phẩm: [SKU-PER-004] Bàn Chải Đánh Răng Than Hoạt Tính Colgate (28,000đ)
+  ➕ Tạo sản phẩm: [SKU-PER-005] Bật Lửa Tiện Dụng Cricket (10,000đ)
+
+📌 Bước 4: Tải lên ảnh placeholder qua API POST /products/:id/image...
+  🔑 Đăng nhập tài khoản Admin thành công để cấp quyền tải ảnh.
+  🖼️ Đã upload ảnh cho [SKU-DRK-001]: /uploads/efc40f86-8bd0-4b66-9080-501bd24ac31e.png
+  🖼️ Đã upload ảnh cho [SKU-DRK-002]: /uploads/11c56be0-2263-482d-aa89-40848c405109.png
+  🖼️ Đã upload ảnh cho [SKU-DRK-003]: /uploads/5f6fe6fa-26a2-4461-8ddd-c103c92e8b8d.png
+  🖼️ Đã upload ảnh cho [SKU-DRK-004]: /uploads/59ed976c-4a2a-4bab-8524-6d93451d62b6.png
+  🖼️ Đã upload ảnh cho [SKU-DRK-005]: /uploads/7228bdf2-2160-401b-95c3-a08cec588398.png
+  🖼️ Đã upload ảnh cho [SKU-DRK-006]: /uploads/169dba77-1048-4a63-9bf3-5a0d1fa8f036.png
+  🖼️ Đã upload ảnh cho [SKU-SNK-001]: /uploads/cc009c76-8645-4439-b5af-4c82b0330169.png
+  🖼️ Đã upload ảnh cho [SKU-SNK-002]: /uploads/ae94a30f-c80f-4c65-b825-26285802ec28.png
+  🖼️ Đã upload ảnh cho [SKU-SNK-003]: /uploads/c50a1b77-a8a9-49fc-8c8e-d0cc8f67d4f5.png
+  🖼️ Đã upload ảnh cho [SKU-SNK-004]: /uploads/c86421b2-c08b-4ab9-9141-d19d5116e2e4.png
+  🖼️ Đã upload ảnh cho [SKU-SNK-005]: /uploads/89186c8a-5a47-4c94-84ab-41d60c41a708.png
+  🖼️ Đã upload ảnh cho [SKU-NDL-001]: /uploads/581c78cc-8752-4efe-ba8a-b83015c8f4f8.png
+  🖼️ Đã upload ảnh cho [SKU-NDL-002]: /uploads/335c8de3-60b5-4b8b-9662-fe87e4729e05.png
+  🖼️ Đã upload ảnh cho [SKU-NDL-003]: /uploads/ee673078-202b-4b85-a6d0-d6ac12c82e45.png
+  🖼️ Đã upload ảnh cho [SKU-NDL-004]: /uploads/d372dc32-5696-44d3-81a8-f537ea972c65.png
+  🖼️ Đã upload ảnh cho [SKU-NDL-005]: /uploads/3b0977bd-5e70-41a1-ad05-accad04d4628.png
+  🖼️ Đã upload ảnh cho [SKU-MLK-001]: /uploads/aa8cce02-5260-4066-853b-4320b868d10a.png
+  🖼️ Đã upload ảnh cho [SKU-MLK-002]: /uploads/2acb96b5-86ed-490f-a654-b273fc5d6fff.png
+  🖼️ Đã upload ảnh cho [SKU-MLK-003]: /uploads/4103310a-aec2-4cf4-87ea-92a979da2e36.png
+  🖼️ Đã upload ảnh cho [SKU-MLK-004]: /uploads/9b911f20-a102-4548-807b-09a04440cba4.png
+  🖼️ Đã upload ảnh cho [SKU-MLK-005]: /uploads/b4cfd0ee-a03a-4cbc-a23b-b4f43978f0cb.png
+  🖼️ Đã upload ảnh cho [SKU-PER-001]: /uploads/cc9f6727-62d7-49b7-9d5f-6865b474d6bc.png
+  🖼️ Đã upload ảnh cho [SKU-PER-002]: /uploads/26e372f6-6581-4fe3-9d1b-c1e938816052.png
+  🖼️ Đã upload ảnh cho [SKU-PER-003]: /uploads/fedae17f-2d3e-4346-9a42-1ece8808a5a0.png
+  🖼️ Đã upload ảnh cho [SKU-PER-004]: /uploads/283bd43d-0d24-4a45-a525-0d430fd0d345.png
+  🖼️ Đã upload ảnh cho [SKU-PER-005]: /uploads/77808448-6be6-4ddf-be7b-e179a22d1a0b.png
+
+📌 Bước 5: Khởi tạo/Bổ sung tồn kho qua API POST /inventory/add-stock...
+  ⚠️ Khởi tạo sản phẩm HẾT HÀNG (0 tồn): [br-02] -> [SKU-NDL-004] Cơm Nắm Onigiri Cá Hồi Mayonnaise
+
+📌 Bước 6: Khởi tạo 12 Đơn hàng qua API thật (Saga & State Machine)...
+  ⏳ Đang tạo 12 đơn hàng demo qua API Gateway...
+  🛒 [Đơn 1/12] #543d9bc3... | br-01 | COD -> PENDING
+  🛒 [Đơn 2/12] #618262c0... | br-01 | COD -> CONFIRMED
+  🛒 [Đơn 3/12] #64f10452... | br-01 | MOMO -> CONFIRMED
+  🛒 [Đơn 4/12] #c6aa7ae4... | br-01 | MOMO -> PAID
+  🛒 [Đơn 5/12] #7373fbff... | br-01 | COD -> SHIPPED
+  🛒 [Đơn 6/12] #d0997768... | br-01 | COD -> CANCELLED
+  🛒 [Đơn 7/12] #df4c6556... | br-02 | MOMO -> PENDING
+  🛒 [Đơn 8/12] #6e9e6977... | br-02 | COD -> CONFIRMED
+  🛒 [Đơn 9/12] #6b3e503d... | br-02 | MOMO -> PAID
+  🛒 [Đơn 10/12] #8cac3876... | br-02 | MOMO -> PAID
+  🛒 [Đơn 11/12] #b092b6c7... | br-02 | MOMO -> SHIPPED
+  🛒 [Đơn 12/12] #7848d5fc... | br-02 | COD -> PAID
+
+======================================================
+📊 TỔNG KẾT TOÀN BỘ BỘ DỮ LIỆU DEMO HỆ THỐNG CSM:
+======================================================
+  👤 Tổng số tài khoản (Auth DB):       13 tài khoản
+     (admin@csm.vn, manager.q1@csm.vn, manager.q2@csm.vn, customer1, customer2)
+  🏢 Tổng số chi nhánh (Inventory DB):  3 chi nhánh (br-01, br-02, br-03)
+  📂 Tổng số danh mục (Product DB):     5 danh mục
+  📦 Tổng số sản phẩm (Product DB):     26 sản phẩm (SKU-DRK, SKU-SNK, SKU-NDL, ...)
+  🖼️ Ảnh placeholder đã xử lý:          26 tải mới, 0 sẵn có
+  📊 Bản ghi tồn kho (Inventory DB):    91 bản ghi (đủ 3 chi nhánh)
+  🛒 Tổng số đơn hàng (Order DB):       218 đơn hàng
+     - Phân bổ theo trạng thái: { CANCELLED: 164, CONFIRMED: 15, PENDING: 16, PAID: 19, SHIPPED: 4 }
+     - Phân bổ theo chi nhánh:   { 'br-01': 210, 'br-02': 8 }
+======================================================
+🎉 SEED DỮ LIỆU DEMO HOÀN TẤT THÀNH CÔNG VÀ IDEMPOTENT!
+

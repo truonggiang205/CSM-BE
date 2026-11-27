@@ -1,9 +1,52 @@
 import { Module } from '@nestjs/common';
-import { AuthController } from './auth.controller';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
+import { createEnvValidator } from '@csm/config';
+import { AuthController, AvatarFileController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { AuthGuard } from './guards/auth.guard';
+import { User } from './entities/user.entity';
 
 @Module({
-  imports: [],
-  controllers: [AuthController],
-  providers: [],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['../../.env', '.env'],
+      validate: createEnvValidator({
+        serviceName: 'auth-service',
+        requiredDbUrl: 'AUTH_DB_URL',
+        requiredSecrets: ['JWT_SECRET', 'JWT_REFRESH_SECRET'],
+      }),
+    }),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        type: 'mysql',
+        url: configService.getOrThrow<string>('AUTH_DB_URL'),
+        entities: [User],
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        migrationsRun: configService.get<string>('DB_SYNC') === 'false',
+        synchronize:
+          configService.get<string>('NODE_ENV') === 'development' ||
+          configService.get<string>('DB_SYNC') === 'true',
+        ssl: configService.get<string>('AUTH_DB_URL')?.includes('ssl-mode=REQUIRED')
+          ? { rejectUnauthorized: false }
+          : false,
+      }),
+
+      inject: [ConfigService],
+    }),
+    TypeOrmModule.forFeature([User]),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.getOrThrow<string>('JWT_SECRET'),
+      }),
+      inject: [ConfigService],
+    }),
+  ],
+  controllers: [AuthController, AvatarFileController],
+  providers: [AuthService, AuthGuard],
 })
 export class AppModule {}

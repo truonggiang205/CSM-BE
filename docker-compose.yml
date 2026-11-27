@@ -1,40 +1,325 @@
-version: '3.8'
-
-services:
-  # Cụm MySQL Database chứa 4 Schema độc lập
-  mysql:
-    image: mysql:8.0
-    container_name: csm_mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-    ports:
-      - "3306:3306"
-    volumes:
-      - csm_mysql_data:/var/lib/mysql
-      - ./infrastructure/docker-local/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - csm-network
-
-  # Quản lý Database qua Web (http://localhost:8080 - User: root / Pass: root)
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: csm_phpmyadmin
-    restart: always
-    environment:
-      PMA_HOST: mysql
-      PMA_PORT: 3306
-      MYSQL_ROOT_PASSWORD: root
-    ports:
-      - "8080:80"
-    depends_on:
-      - mysql
-    networks:
-      - csm-network
-
-volumes:
-  csm_mysql_data:
-
 networks:
   csm-network:
     driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  product_uploads:
+    driver: local
+
+services:
+  # ==========================================
+  # 1. DATABASE (Multi-schema MySQL Container)
+  # ==========================================
+  mysql:
+    image: mysql:8.0
+    container_name: csm-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Vui lòng cấu hình MYSQL_ROOT_PASSWORD trong .env}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./infrastructure/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
+  # 2. AUTH SERVICE (Port 3001)
+  # ==========================================
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    container_name: csm-auth-service
+    restart: always
+    environment:
+      PORT: ${AUTH_PORT:-3001}
+      AUTH_PORT: ${AUTH_PORT:-3001}
+      NODE_ENV: ${NODE_ENV:-development}
+      DB_SYNC: ${DB_SYNC:-false}
+      AUTH_DB_URL: mysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:?Vui lòng cấu hình MYSQL_PASSWORD trong .env}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/csm_auth
+      JWT_SECRET: ${JWT_SECRET:?Vui lòng cấu hình JWT_SECRET trong .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Vui lòng cấu hình JWT_REFRESH_SECRET trong .env}
+      # Ảnh đại diện lưu chung volume với ảnh sản phẩm để api-gateway phục vụ trực tiếp
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - product_uploads:/app/uploads
+    ports:
+      - "${AUTH_PORT:-3001}:${AUTH_PORT:-3001}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3001/auth/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
+  # 3. PRODUCT SERVICE (Port 3002)
+  # ==========================================
+  product-service:
+    build:
+      context: .
+      dockerfile: apps/product-service/Dockerfile
+    container_name: csm-product-service
+    restart: always
+    environment:
+      PORT: ${PRODUCT_PORT:-3002}
+      PRODUCT_PORT: ${PRODUCT_PORT:-3002}
+      NODE_ENV: ${NODE_ENV:-development}
+      DB_SYNC: ${DB_SYNC:-false}
+      PRODUCT_DB_URL: mysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:?Vui lòng cấu hình MYSQL_PASSWORD trong .env}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/csm_product
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - product_uploads:/app/uploads
+    ports:
+      - "${PRODUCT_PORT:-3002}:${PRODUCT_PORT:-3002}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
+  # 4. INVENTORY SERVICE (Port 3003)
+  # ==========================================
+  inventory-service:
+    build:
+      context: .
+      dockerfile: apps/inventory-service/Dockerfile
+    container_name: csm-inventory-service
+    restart: always
+    environment:
+      PORT: ${INVENTORY_PORT:-3003}
+      INVENTORY_PORT: ${INVENTORY_PORT:-3003}
+      NODE_ENV: ${NODE_ENV:-development}
+      DB_SYNC: ${DB_SYNC:-false}
+      INVENTORY_DB_URL: mysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:?Vui lòng cấu hình MYSQL_PASSWORD trong .env}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/csm_inventory
+      ORDER_SERVICE_URL: http://order-service:${ORDER_PORT:-3004}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?Vui lòng cấu hình INTERNAL_SECRET trong .env}
+    ports:
+      - "${INVENTORY_PORT:-3003}:${INVENTORY_PORT:-3003}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3003/inventory/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
+  # 5. ORDER SERVICE (Port 3004)
+  # ==========================================
+  order-service:
+    build:
+      context: .
+      dockerfile: apps/order-service/Dockerfile
+    container_name: csm-order-service
+    restart: always
+    environment:
+      PORT: ${ORDER_PORT:-3004}
+      ORDER_PORT: ${ORDER_PORT:-3004}
+      NODE_ENV: ${NODE_ENV:-development}
+      DB_SYNC: ${DB_SYNC:-false}
+      ORDER_DB_URL: mysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:?Vui lòng cấu hình MYSQL_PASSWORD trong .env}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/csm_order
+      JWT_SECRET: ${JWT_SECRET:?Vui lòng cấu hình JWT_SECRET trong .env}
+      INVENTORY_SERVICE_URL: http://inventory-service:${INVENTORY_PORT:-3003}
+      PRODUCT_SERVICE_URL: http://product-service:${PRODUCT_PORT:-3002}
+      PAYMENT_SERVICE_URL: http://payment-service:${PAYMENT_PORT:-3005}
+      NOTIFICATION_SERVICE_URL: http://notification-service:${NOTIFICATION_PORT:-3006}
+      DISCOUNT_SERVICE_URL: http://discount-service:${DISCOUNT_PORT:-3007}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?Vui lòng cấu hình INTERNAL_SECRET trong .env}
+    ports:
+      - "${ORDER_PORT:-3004}:${ORDER_PORT:-3004}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3004/orders/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
+  # 6. PAYMENT SERVICE (Port 3005)
+  # ==========================================
+  payment-service:
+    build:
+      context: .
+      dockerfile: apps/payment-service/Dockerfile
+    container_name: csm-payment-service
+    restart: always
+    environment:
+      PORT: ${PAYMENT_PORT:-3005}
+      PAYMENT_PORT: ${PAYMENT_PORT:-3005}
+      NODE_ENV: ${NODE_ENV:-development}
+      JWT_SECRET: ${JWT_SECRET:?Vui lòng cấu hình JWT_SECRET trong .env}
+      PAYMENT_SIMULATION: ${PAYMENT_SIMULATION:-false}
+      PAYMENT_SIMULATION_SECRET: ${PAYMENT_SIMULATION_SECRET:?Vui lòng cấu hình PAYMENT_SIMULATION_SECRET trong .env}
+      ORDER_SERVICE_URL: http://order-service:${ORDER_PORT:-3004}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?Vui lòng cấu hình INTERNAL_SECRET trong .env}
+      PUBLIC_GATEWAY_URL: ${PUBLIC_GATEWAY_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - "${PAYMENT_PORT:-3005}:${PAYMENT_PORT:-3005}"
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3005/payments/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================
+  # 7. NOTIFICATION SERVICE (Port 3006 - Mô phỏng)
+  # ==========================================
+  notification-service:
+    build:
+      context: .
+      dockerfile: apps/notification-service/Dockerfile
+    container_name: csm-notification-service
+    restart: always
+    environment:
+      PORT: ${NOTIFICATION_PORT:-3006}
+      NOTIFICATION_PORT: ${NOTIFICATION_PORT:-3006}
+      NODE_ENV: ${NODE_ENV:-development}
+    ports:
+      - "${NOTIFICATION_PORT:-3006}:${NOTIFICATION_PORT:-3006}"
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3006/notifications/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================
+  # 7.5. DISCOUNT SERVICE (Port 3007)
+  # ==========================================
+  discount-service:
+    build:
+      context: .
+      dockerfile: apps/discount-service/Dockerfile
+    container_name: csm-discount-service
+    restart: always
+    environment:
+      PORT: ${DISCOUNT_PORT:-3007}
+      DISCOUNT_PORT: ${DISCOUNT_PORT:-3007}
+      NODE_ENV: ${NODE_ENV:-development}
+      DB_SYNC: ${DB_SYNC:-false}
+      DISCOUNT_DB_URL: mysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:?Vui lòng cấu hình MYSQL_PASSWORD trong .env}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/csm_discount
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?Vui lòng cấu hình INTERNAL_SECRET trong .env}
+      ENABLE_TEST_DELAY: ${ENABLE_TEST_DELAY:-false}
+    ports:
+      - "${DISCOUNT_PORT:-3007}:${DISCOUNT_PORT:-3007}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3007/discounts/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
+  # 8. API GATEWAY (Port 8000)
+  # ==========================================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: csm-api-gateway
+    restart: always
+    environment:
+      PORT: ${PORT:-8000}
+      NODE_ENV: ${NODE_ENV:-development}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-false}
+      JWT_SECRET: ${JWT_SECRET:?Vui lòng cấu hình JWT_SECRET trong .env}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?Vui lòng cấu hình INTERNAL_SECRET trong .env}
+      AUTH_SERVICE_URL: http://auth-service:${AUTH_PORT:-3001}
+      PRODUCT_SERVICE_URL: http://product-service:${PRODUCT_PORT:-3002}
+      INVENTORY_SERVICE_URL: http://inventory-service:${INVENTORY_PORT:-3003}
+      ORDER_SERVICE_URL: http://order-service:${ORDER_PORT:-3004}
+      PAYMENT_SERVICE_URL: http://payment-service:${PAYMENT_PORT:-3005}
+      NOTIFICATION_SERVICE_URL: http://notification-service:${NOTIFICATION_PORT:-3006}
+      DISCOUNT_SERVICE_URL: http://discount-service:${DISCOUNT_PORT:-3007}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - product_uploads:/app/uploads:ro
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      discount-service:
+        condition: service_healthy
+    networks:
+      - csm-network
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:8000/api/v1/health', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
+  # 9. FRONTEND (React + Vite + Nginx - Port 3000)
+  # ==========================================
+  frontend:
+    build:
+      context: ../CSM-FE
+      dockerfile: Dockerfile
+    container_name: csm-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - csm-network

@@ -6,11 +6,19 @@ yarn-error.log*
 dist/
 build/
 
-# Environment Variables
+# Environment Variables (mọi file .env thật: .env, .env.cloud, .env.backup, .env.bad, ...)
+# Chỉ commit file mẫu *.example
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
+!.env.*.example
+
+# Test & Build Artifacts
+test-results/
+playwright-report/
+e2e-artifacts/
+*.tsbuildinfo
+uploads/
 
 # IDE & OS
 .vscode/

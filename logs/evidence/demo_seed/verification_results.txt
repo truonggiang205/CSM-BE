@@ -1,0 +1,37 @@
+======================================================
+🧪 KIỂM CHỨNG TỰ ĐỘNG BỘ DỮ LIỆU DEMO (CSM-BE)
+======================================================
+
+1️⃣ Kiểm tra GET /products (phân trang limit=50):
+   - Tổng số sản phẩm (total): 26
+   - Số sản phẩm nhận về: 26
+   ✅ ĐẠT: Số lượng sản phẩm >= 25 (Thực tế: 26)
+
+2️⃣ Kiểm tra truy cập ảnh qua Gateway (http://localhost:8000/uploads/...):
+   - [SKU-PER-005] Bật Lửa Tiện Dụng Cricket -> http://localhost:8000/uploads/77808448-6be6-4ddf-be7b-e179a22d1a0b.png (Status: 200, Type: image/png)
+   - [SKU-PER-004] Bàn Chải Đánh Răng Than Hoạt Tính Colgate -> http://localhost:8000/uploads/283bd43d-0d24-4a45-a525-0d430fd0d345.png (Status: 200, Type: image/png)
+   - [SKU-PER-003] Khẩu Trang Y Tế 4 Lớp Kháng Khuẩn (Gói 10 cái) -> http://localhost:8000/uploads/fedae17f-2d3e-4346-9a42-1ece8808a5a0.png (Status: 200, Type: image/png)
+   - [SKU-PER-002] Gel Rửa Tay Khô Lifebuoy 50ml -> http://localhost:8000/uploads/26e372f6-6581-4fe3-9d1b-c1e938816052.png (Status: 200, Type: image/png)
+   - [SKU-PER-001] Khăn Giấy Ướt Kháng Khuẩn CSM Gói 20 tờ -> http://localhost:8000/uploads/cc9f6727-62d7-49b7-9d5f-6865b474d6bc.png (Status: 200, Type: image/png)
+   ✅ ĐẠT: Toàn bộ ảnh mẫu mở thành công HTTP 200 với MIME image/png
+
+3️⃣ Kiểm tra phân quyền chi nhánh manager.q1@csm.vn:
+   - Đăng nhập manager.q1 thành công (Role: BRANCH_MANAGER, Branch: br-01)
+   - Số đơn hàng manager.q1 thấy: 50 đơn
+   - Số đơn khác chi nhánh br-01: 0
+   ✅ ĐẠT: Manager Q1 chỉ thấy 100% đơn của br-01, không hề lộ đơn của br-02
+
+4️⃣ Kiểm tra phân quyền chi nhánh manager.q2@csm.vn:
+   - Số đơn hàng manager.q2 thấy: 8 đơn
+   - Số đơn khác chi nhánh br-02: 0
+   ✅ ĐẠT: Manager Q2 chỉ thấy 100% đơn của br-02
+
+5️⃣ Kiểm tra cấu hình tồn kho đặc biệt:
+   - br-01 có sản phẩm tồn thấp: Product ID 42415ec2-727b-45b1-ac61-0d12c817205a (Tồn: 3)
+   ✅ ĐẠT: Có sản phẩm tồn thấp tại br-01
+   - br-02 có sản phẩm hết hàng: Product ID 1d859429-fe0d-452b-a703-c6cdf39108ae (Tồn: 0)
+   ✅ ĐẠT: Có sản phẩm hết hàng (0 tồn) tại br-02 để demo cảnh báo
+
+======================================================
+🎉 TOÀN BỘ CÁC TIÊU CHÍ BỘ DỮ LIỆU DEMO ĐỀU ĐẠT CHUẨN!
+======================================================

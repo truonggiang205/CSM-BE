@@ -1,57 +1,458 @@
-import { Controller, Get, Post, Param, Body, BadRequestException } from '@nestjs/common';
-
-// Tồn kho theo từng cặp (branch_id, product_id)
-let INVENTORY_DB: Array<{ branchId: number; productId: number; stock: number }> = [
-  { branchId: 1, productId: 1, stock: 25 },
-  { branchId: 1, productId: 2, stock: 12 },
-  { branchId: 1, productId: 3, stock: 8 },
-  { branchId: 1, productId: 4, stock: 0 },
-  { branchId: 1, productId: 5, stock: 40 },
-  { branchId: 2, productId: 1, stock: 10 },
-  { branchId: 2, productId: 2, stock: 15 },
-  { branchId: 2, productId: 3, stock: 0 },
-  { branchId: 3, productId: 1, stock: 30 },
-];
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  BadRequestException,
+  ForbiddenException,
+  UseGuards,
+  Query,
+  Headers,
+} from '@nestjs/common';
+import { requireEnv } from '@csm/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { Stock } from './entities/stock.entity';
+import { Branch } from './entities/branch.entity';
+import { StockTransaction, TransactionType } from './entities/stock-transaction.entity';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
+import {
+  AddStockDto,
+  ReserveStockDto,
+  ConfirmDeductStockDto,
+  ReleaseStockDto,
+} from './dto/stock-operation.dto';
 
 @Controller('inventory')
+
+@UseGuards(RolesGuard)
 export class InventoryController {
-  @Get('branch/:branchId')
-  getInventoryByBranch(@Param('branchId') branchId: string) {
-    return INVENTORY_DB.filter(item => item.branchId === Number(branchId));
+  constructor(
+    @InjectRepository(Stock)
+    private readonly stockRepository: Repository<Stock>,
+    @InjectRepository(Branch)
+    private readonly branchRepository: Repository<Branch>,
+    @InjectRepository(StockTransaction)
+    private readonly stockTxRepository: Repository<StockTransaction>,
+    private readonly dataSource: DataSource,
+  ) {}
+
+  @Get('health')
+  getHealth() {
+    return { status: 'ok', service: 'inventory-service' };
   }
 
-  @Post('check-stock')
-  checkStock(@Body() body: { branchId: number; items: Array<{ productId: number; quantity: number }> }) {
-    const { branchId, items } = body;
-    for (const item of items) {
-      const record = INVENTORY_DB.find(inv => inv.branchId === branchId && inv.productId === item.productId);
-      if (!record || record.stock < item.quantity) {
+  @Get('transactions')
+
+  async getTransactions(
+    @Query('referenceId') referenceId?: string,
+    @Query('stockId') stockId?: string,
+  ) {
+    const where: any = {};
+    if (referenceId) where.reference_id = referenceId;
+    if (stockId) where.stock_id = stockId;
+    return this.stockTxRepository.find({
+      where,
+      order: { created_at: 'ASC' },
+    });
+  }
+
+  @Get('branch/:branchId')
+  async getInventoryByBranch(@Param('branchId') branchId: string) {
+    return this.stockRepository.find({
+      where: { branch_id: branchId },
+    });
+  }
+
+  @Get('product/:productId')
+  async getStockByProduct(@Param('productId') productId: string) {
+    const branches = await this.branchRepository.find({ order: { name: 'ASC' } });
+    const stocks = await this.stockRepository.find({
+      where: { product_id: productId },
+    });
+    const stockMap = new Map(stocks.map((s) => [s.branch_id, s]));
+
+    return branches.map((b) => {
+      const s = stockMap.get(b.id);
+      const quantity = s ? s.quantity : 0;
+      const reserved_quantity = s ? s.reserved_quantity : 0;
+      const available = Math.max(0, quantity - reserved_quantity);
+
+      return {
+        branch_id: b.id,
+        branch_name: b.name,
+        branch_address: b.address || '',
+        quantity,
+        reserved_quantity,
+        available,
+      };
+    });
+  }
+
+  // Dành cho Admin hoặc Branch Manager: Nhập thêm tồn kho
+  @Roles('ADMIN', 'BRANCH_MANAGER')
+  @Post('add-stock')
+  async addStock(@Body() body: AddStockDto) {
+    const { branchId, productId, quantity, referenceId } = body;
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      let stock = await queryRunner.manager.findOne(Stock, {
+        where: { branch_id: branchId, product_id: productId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (stock) {
+        stock.quantity += quantity;
+      } else {
+        stock = queryRunner.manager.create(Stock, {
+          branch_id: branchId,
+          product_id: productId,
+          quantity,
+          reserved_quantity: 0,
+        });
+      }
+
+      const savedStock = await queryRunner.manager.save(stock);
+
+      // Ghi log giao dịch nhập kho IN trong cùng Transaction
+      const tx = queryRunner.manager.create(StockTransaction, {
+        stock_id: savedStock.id,
+        type: TransactionType.IN,
+        quantity,
+        reference_id: referenceId || undefined,
+      });
+      await queryRunner.manager.save(tx);
+
+      await queryRunner.commitTransaction();
+      return savedStock;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // 1. SAGA - Bước 1: Giữ hàng tạm thời (Reserve Stock) - Idempotent theo referenceId + stock_id
+  @Post('reserve-stock')
+  async reserveStock(@Body() body: ReserveStockDto) {
+    const { branchId, items, referenceId } = body;
+
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      let alreadyHandledCount = 0;
+
+      for (const item of items) {
+        // Sử dụng pessimistic_write để lock dòng record, chống race condition
+        const stock = await queryRunner.manager.findOne(Stock, {
+          where: { branch_id: branchId, product_id: item.productId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!stock) {
+          throw new BadRequestException(`Sản phẩm ID ${item.productId} không có trong kho tại chi nhánh ${branchId}!`);
+        }
+
+        // KIỂM TRA IDEMPOTENCY SAU KHI ĐÃ LOCK PESSIMISTIC_WRITE
+        if (referenceId) {
+          const existingTx = await queryRunner.manager.findOne(StockTransaction, {
+            where: {
+              reference_id: referenceId,
+              stock_id: stock.id,
+              type: TransactionType.RESERVE,
+            },
+          });
+          if (existingTx) {
+            alreadyHandledCount++;
+            continue;
+          }
+        }
+
+        const available = stock.quantity - stock.reserved_quantity;
+        if (available < item.quantity) {
+          throw new BadRequestException(
+            `Sản phẩm ID ${item.productId} không đủ số lượng có sẵn (Có sẵn: ${available}, Yêu cầu: ${item.quantity})`,
+          );
+        }
+
+        // Tăng số lượng đang được giữ (giữ chỗ)
+        stock.reserved_quantity += item.quantity;
+        const savedStock = await queryRunner.manager.save(stock);
+
+        // Ghi bản ghi StockTransaction RESERVE trong CÙNG DB transaction
+        const tx = queryRunner.manager.create(StockTransaction, {
+          stock_id: savedStock.id,
+          type: TransactionType.RESERVE,
+          quantity: item.quantity,
+          reference_id: referenceId || undefined,
+        });
+        await queryRunner.manager.save(tx);
+      }
+
+      await queryRunner.commitTransaction();
+
+      if (alreadyHandledCount === items.length && items.length > 0) {
         return {
-          available: false,
-          message: `Sản phẩm ID ${item.productId} không đủ số lượng tại chi nhánh ${branchId}!`,
+          success: true,
+          message: 'Đơn hàng đã được giữ tồn kho trước đó (Idempotent)',
+          idempotent: true,
         };
       }
+
+      return { success: true, message: 'Đã giữ hàng (reserve) thành công', idempotent: false };
+    } catch (err: any) {
+      await queryRunner.rollbackTransaction();
+      // Bắt lỗi trùng khóa unique index (ER_DUP_ENTRY / 1062) khi xảy ra race condition đồng thời
+      if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.message?.includes('Duplicate entry')) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được giữ tồn kho trước đó (Idempotent race detected)',
+          idempotent: true,
+        };
+      }
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
-    return { available: true, message: 'Còn đủ hàng tồn kho' };
   }
 
-  @Post('deduct-stock')
-  deductStock(@Body() body: { branchId: number; items: Array<{ productId: number; quantity: number }> }) {
-    const { branchId, items } = body;
-    // Kiểm tra trước
-    for (const item of items) {
-      const record = INVENTORY_DB.find(inv => inv.branchId === branchId && inv.productId === item.productId);
-      if (!record || record.stock < item.quantity) {
-        throw new BadRequestException(`Không đủ tồn kho để trừ sản phẩm ID ${item.productId}`);
+  // 2. SAGA - Bước 2: Xác nhận thanh toán thành công, trừ kho chính thức (Confirm Deduct) - Idempotent
+  @Post('confirm-deduct')
+  async confirmDeductStock(@Body() body: ConfirmDeductStockDto) {
+    const { branchId, items, referenceId } = body;
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      let alreadyHandledCount = 0;
+
+      for (const item of items) {
+        const stock = await queryRunner.manager.findOne(Stock, {
+          where: { branch_id: branchId, product_id: item.productId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!stock) {
+          throw new BadRequestException(`Sản phẩm ID ${item.productId} không có trong kho`);
+        }
+
+        // KIỂM TRA IDEMPOTENCY SAU KHI ĐÃ LOCK PESSIMISTIC_WRITE
+        if (referenceId) {
+          const existingTx = await queryRunner.manager.findOne(StockTransaction, {
+            where: {
+              reference_id: referenceId,
+              stock_id: stock.id,
+              type: TransactionType.OUT,
+            },
+          });
+          if (existingTx) {
+            alreadyHandledCount++;
+            continue;
+          }
+        }
+
+        if (stock.reserved_quantity < item.quantity) {
+          throw new BadRequestException(`Số lượng đang giữ (reserved) không đủ để trừ cho sản phẩm ID ${item.productId}`);
+        }
+
+        // Giảm cả tồn kho thực tế và tồn kho đang giữ
+        stock.quantity -= item.quantity;
+        stock.reserved_quantity -= item.quantity;
+        const savedStock = await queryRunner.manager.save(stock);
+
+        // Ghi bản ghi StockTransaction OUT trong CÙNG DB transaction
+        const tx = queryRunner.manager.create(StockTransaction, {
+          stock_id: savedStock.id,
+          type: TransactionType.OUT,
+          quantity: item.quantity,
+          reference_id: referenceId || undefined,
+        });
+        await queryRunner.manager.save(tx);
       }
-    }
-    // Thực hiện trừ kho
-    for (const item of items) {
-      const record = INVENTORY_DB.find(inv => inv.branchId === branchId && inv.productId === item.productId);
-      if (record) {
-        record.stock -= item.quantity;
+
+      await queryRunner.commitTransaction();
+
+      if (alreadyHandledCount === items.length && items.length > 0) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được xác nhận trừ kho trước đó (Idempotent)',
+          idempotent: true,
+        };
       }
+
+      return { success: true, message: 'Đã trừ tồn kho chính thức thành công', idempotent: false };
+    } catch (err: any) {
+      await queryRunner.rollbackTransaction();
+      if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.message?.includes('Duplicate entry')) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được xác nhận trừ kho trước đó (Idempotent race detected)',
+          idempotent: true,
+        };
+      }
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
-    return { success: true, message: 'Đã trừ tồn kho thành công', remaining: INVENTORY_DB };
+  }
+
+  // 3. SAGA - Rollback: Hủy giữ hàng (Release Stock) - Idempotent
+  @Post('release-stock')
+  async releaseStock(@Body() body: ReleaseStockDto) {
+    const { branchId, items, referenceId } = body;
+
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      let alreadyHandledCount = 0;
+
+      for (const item of items) {
+        const stock = await queryRunner.manager.findOne(Stock, {
+          where: { branch_id: branchId, product_id: item.productId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        // KIỂM TRA IDEMPOTENCY SAU KHI ĐÃ LOCK PESSIMISTIC_WRITE
+        if (referenceId && stock) {
+          const existingTx = await queryRunner.manager.findOne(StockTransaction, {
+            where: {
+              reference_id: referenceId,
+              stock_id: stock.id,
+              type: TransactionType.CANCEL_RESERVE,
+            },
+          });
+          if (existingTx) {
+            alreadyHandledCount++;
+            continue;
+          }
+        }
+
+        if (stock && stock.reserved_quantity >= item.quantity) {
+          stock.reserved_quantity -= item.quantity;
+          const savedStock = await queryRunner.manager.save(stock);
+
+          // Ghi bản ghi CANCEL_RESERVE trong CÙNG DB transaction
+          const tx = queryRunner.manager.create(StockTransaction, {
+            stock_id: savedStock.id,
+            type: TransactionType.CANCEL_RESERVE,
+            quantity: item.quantity,
+            reference_id: referenceId || undefined,
+          });
+          await queryRunner.manager.save(tx);
+        }
+      }
+
+      await queryRunner.commitTransaction();
+
+      if (alreadyHandledCount === items.length && items.length > 0) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent)',
+          idempotent: true,
+        };
+      }
+
+      return { success: true, message: 'Đã giải phóng (release) hàng giữ tạm thành công', idempotent: false };
+    } catch (err: any) {
+      await queryRunner.rollbackTransaction();
+      if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.message?.includes('Duplicate entry')) {
+        return {
+          success: true,
+          message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent race detected)',
+          idempotent: true,
+        };
+      }
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // 4. SAGA - Bù trừ sau khi đã trừ kho: Hoàn kho khi huỷ đơn CONFIRMED / PAID - Idempotent
+  // Chỉ hoàn đúng phần đã thực sự trừ (có giao dịch OUT cùng referenceId) và chỉ cho gọi nội bộ.
+  @Post('return-stock')
+  async returnStock(@Body() body: ReleaseStockDto, @Headers('x-internal-secret') secret?: string) {
+    if (!secret || secret !== requireEnv('INTERNAL_SECRET')) {
+      throw new ForbiddenException('Endpoint chỉ cho phép gọi nội bộ');
+    }
+    const { branchId, items, referenceId } = body;
+    if (!referenceId) {
+      throw new BadRequestException('Thiếu referenceId (mã đơn hàng) để hoàn kho');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      let returnedCount = 0;
+      let alreadyHandledCount = 0;
+
+      for (const item of items) {
+        const stock = await queryRunner.manager.findOne(Stock, {
+          where: { branch_id: branchId, product_id: item.productId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!stock) continue;
+
+        const existingReturn = await queryRunner.manager.findOne(StockTransaction, {
+          where: { reference_id: referenceId, stock_id: stock.id, type: TransactionType.RETURN },
+        });
+        if (existingReturn) {
+          alreadyHandledCount++;
+          continue;
+        }
+
+        const outTx = await queryRunner.manager.findOne(StockTransaction, {
+          where: { reference_id: referenceId, stock_id: stock.id, type: TransactionType.OUT },
+        });
+        if (!outTx) continue; // chưa từng trừ kho cho đơn này -> không có gì để hoàn
+
+        const qty = Math.min(Number(item.quantity) || 0, outTx.quantity);
+        if (qty <= 0) continue;
+
+        stock.quantity += qty;
+        const savedStock = await queryRunner.manager.save(stock);
+        await queryRunner.manager.save(
+          queryRunner.manager.create(StockTransaction, {
+            stock_id: savedStock.id,
+            type: TransactionType.RETURN,
+            quantity: qty,
+            reference_id: referenceId,
+          }),
+        );
+        returnedCount++;
+      }
+
+      await queryRunner.commitTransaction();
+
+      if (returnedCount === 0 && alreadyHandledCount > 0) {
+        return { success: true, message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent)', idempotent: true };
+      }
+      return { success: true, message: `Đã hoàn ${returnedCount} mặt hàng về kho`, idempotent: false };
+    } catch (err: any) {
+      await queryRunner.rollbackTransaction();
+      if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.message?.includes('Duplicate entry')) {
+        return { success: true, message: 'Đơn hàng đã được hoàn kho trước đó (Idempotent race detected)', idempotent: true };
+      }
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }
