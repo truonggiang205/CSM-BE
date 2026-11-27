@@ -29,6 +29,9 @@ import { BranchController } from './branch.controller';
         synchronize:
           configService.get<string>('NODE_ENV') === 'development' ||
           configService.get<string>('DB_SYNC') === 'true',
+        // Giống các service khác: DB_SYNC=false thì tự chạy migration khi khởi động
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        migrationsRun: configService.get<string>('DB_SYNC') === 'false',
         ssl: configService.get<string>('INVENTORY_DB_URL')?.includes('ssl-mode=REQUIRED')
           ? { rejectUnauthorized: false }
           : false,
