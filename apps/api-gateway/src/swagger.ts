@@ -181,6 +181,7 @@ export function setupSwagger(app: INestApplication): void {
                   branch_id: null,
                   fullName: 'Nguyễn Văn A',
                   phone: '0901234567',
+                  avatarUrl: '/uploads/avatar-3f1c….jpg',
                   created_at: '2026-10-18T10:00:00.000Z',
                   updated_at: '2026-11-27T10:00:00.000Z',
                 },
@@ -205,6 +206,37 @@ export function setupSwagger(app: INestApplication): void {
         responses: {
           200: { description: 'Cập nhật hồ sơ thành công, trả về { message, user }' },
           400: { description: 'Họ tên hoặc số điện thoại không hợp lệ' },
+          401: { description: 'Chưa đăng nhập hoặc token không hợp lệ' },
+        },
+      },
+    },
+
+    '/api/v1/auth/avatar': {
+      post: {
+        tags: ['1. Authentication'],
+        summary: 'Tải lên / đổi ảnh đại diện',
+        description: 'multipart/form-data, field "avatar". Chỉ nhận JPG, PNG, WEBP tối đa 2MB. Ảnh cũ sẽ bị xoá.',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: { type: 'object', properties: { avatar: { type: 'string', format: 'binary' } } },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Cập nhật ảnh đại diện thành công, trả về { message, user }' },
+          400: { description: 'Không có ảnh, sai định dạng hoặc vượt quá 2MB' },
+          401: { description: 'Chưa đăng nhập hoặc token không hợp lệ' },
+        },
+      },
+      delete: {
+        tags: ['1. Authentication'],
+        summary: 'Xoá ảnh đại diện',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: { description: 'Đã xoá ảnh đại diện, trả về { message, user }' },
           401: { description: 'Chưa đăng nhập hoặc token không hợp lệ' },
         },
       },

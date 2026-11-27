@@ -3,6 +3,9 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { AuthService } from './auth.service';
 import { User, UserRole } from './entities/user.entity';
 
@@ -292,6 +295,73 @@ describe('Auth Service Flow Test (Register / Login / Refresh)', () => {
     it('Khách hàng gọi danh sách người dùng -> ForbiddenException; Admin thì được', async () => {
       await expect(authService.getUsers(UserRole.CUSTOMER)).rejects.toThrow(ForbiddenException);
       await expect(authService.getUsers(UserRole.ADMIN)).resolves.toHaveLength(1);
+    });
+  });
+
+  describe('5. Ảnh đại diện (Avatar)', () => {
+    const PNG_BYTES = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(32, 0),
+    ]);
+    let uploadDir: string;
+
+    const makeFile = (over: Partial<Express.Multer.File> = {}) =>
+      ({
+        originalname: 'me.png',
+        mimetype: 'image/png',
+        size: PNG_BYTES.length,
+        buffer: PNG_BYTES,
+        ...over,
+      }) as Express.Multer.File;
+
+    beforeEach(() => {
+      uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-avatar-'));
+      process.env.UPLOAD_DIR = uploadDir;
+      mockUsers.push({
+        id: 'usr-01',
+        email: 'test@csm.vn',
+        password_hash: 'hashed',
+        role: UserRole.CUSTOMER,
+        avatar_url: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    });
+
+    afterEach(() => {
+      fs.rmSync(uploadDir, { recursive: true, force: true });
+      delete process.env.UPLOAD_DIR;
+    });
+
+    it('Tải ảnh PNG hợp lệ -> lưu file avatar-*.png và trả avatarUrl', async () => {
+      const res = await authService.updateAvatar('usr-01', makeFile());
+      expect(res.user.avatarUrl).toMatch(/^\/uploads\/avatar-[0-9a-f-]+\.png$/);
+      expect(fs.existsSync(path.join(uploadDir, path.basename(res.user.avatarUrl!)))).toBe(true);
+    });
+
+    it('Đổi ảnh lần 2 -> xoá file ảnh cũ', async () => {
+      const first = await authService.updateAvatar('usr-01', makeFile());
+      const second = await authService.updateAvatar('usr-01', makeFile());
+      expect(second.user.avatarUrl).not.toBe(first.user.avatarUrl);
+      expect(fs.existsSync(path.join(uploadDir, path.basename(first.user.avatarUrl!)))).toBe(false);
+    });
+
+    it('File giả đuôi .png (nội dung không phải ảnh) / sai MIME / không có file -> BadRequest', async () => {
+      await expect(
+        authService.updateAvatar('usr-01', makeFile({ buffer: Buffer.from('<script>alert(1)</script>') })),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        authService.updateAvatar('usr-01', makeFile({ originalname: 'x.gif', mimetype: 'image/gif' })),
+      ).rejects.toThrow(BadRequestException);
+      await expect(authService.updateAvatar('usr-01', undefined)).rejects.toThrow(BadRequestException);
+      expect(fs.readdirSync(uploadDir)).toHaveLength(0);
+    });
+
+    it('Xoá ảnh đại diện -> avatarUrl null và file bị xoá', async () => {
+      const up = await authService.updateAvatar('usr-01', makeFile());
+      const res = await authService.removeAvatar('usr-01');
+      expect(res.user.avatarUrl).toBeNull();
+      expect(fs.existsSync(path.join(uploadDir, path.basename(up.user.avatarUrl!)))).toBe(false);
     });
   });
 });

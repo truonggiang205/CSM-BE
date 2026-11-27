@@ -11,6 +11,7 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { User, UserRole } from './entities/user.entity';
+import { saveAvatar, removeAvatarFile } from './utils/avatar-storage';
 
 export interface JwtPayload {
   sub: string;
@@ -153,6 +154,7 @@ export class AuthService {
       branch_id: user.branch_id ?? null,
       fullName: user.full_name || user.email.split('@')[0],
       phone: user.phone ?? null,
+      avatarUrl: user.avatar_url ?? null,
       created_at: user.created_at,
       updated_at: user.updated_at,
     };
@@ -195,6 +197,30 @@ export class AuthService {
       message: 'Cập nhật hồ sơ thành công',
       user: this.toPublicUser(saved),
     };
+  }
+
+  async updateAvatar(userId: string, file?: Express.Multer.File) {
+    const user = await this.findUserOrThrow(userId);
+    const newUrl = await saveAvatar(file);
+    const oldUrl = user.avatar_url;
+    user.avatar_url = newUrl;
+    try {
+      const saved = await this.userRepository.save(user);
+      await removeAvatarFile(oldUrl);
+      return { message: 'Cập nhật ảnh đại diện thành công', user: this.toPublicUser(saved) };
+    } catch (err) {
+      await removeAvatarFile(newUrl);
+      throw err;
+    }
+  }
+
+  async removeAvatar(userId: string) {
+    const user = await this.findUserOrThrow(userId);
+    const oldUrl = user.avatar_url;
+    user.avatar_url = null;
+    const saved = await this.userRepository.save(user);
+    await removeAvatarFile(oldUrl);
+    return { message: 'Đã xoá ảnh đại diện', user: this.toPublicUser(saved) };
   }
 
   async changePassword(userId: string, body: { currentPassword?: string; newPassword?: string }) {
@@ -268,7 +294,7 @@ export class AuthService {
     const where = role ? { role: role as UserRole } : {};
     const users = await this.userRepository.find({
       where,
-      select: ['id', 'email', 'role', 'branch_id', 'full_name', 'phone', 'created_at', 'updated_at'],
+      select: ['id', 'email', 'role', 'branch_id', 'full_name', 'phone', 'avatar_url', 'created_at', 'updated_at'],
       order: { created_at: 'DESC' },
     });
     return users.map((u) => this.toPublicUser(u));
