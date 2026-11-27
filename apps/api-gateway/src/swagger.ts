@@ -179,11 +179,53 @@ export function setupSwagger(app: INestApplication): void {
                   email: 'customer@csm.vn',
                   role: 'CUSTOMER',
                   branch_id: null,
+                  fullName: 'Nguyễn Văn A',
+                  phone: '0901234567',
                   created_at: '2026-10-18T10:00:00.000Z',
+                  updated_at: '2026-11-27T10:00:00.000Z',
                 },
               },
             },
           },
+          401: { description: 'Chưa đăng nhập hoặc token không hợp lệ' },
+        },
+      },
+      patch: {
+        tags: ['1. Authentication'],
+        summary: 'Cập nhật hồ sơ (họ tên, số điện thoại)',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              example: { fullName: 'Nguyễn Văn A', phone: '0901234567' },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Cập nhật hồ sơ thành công, trả về { message, user }' },
+          400: { description: 'Họ tên hoặc số điện thoại không hợp lệ' },
+          401: { description: 'Chưa đăng nhập hoặc token không hợp lệ' },
+        },
+      },
+    },
+
+    '/api/v1/auth/change-password': {
+      patch: {
+        tags: ['1. Authentication'],
+        summary: 'Đổi mật khẩu',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              example: { currentPassword: 'MatKhauCu123', newPassword: 'MatKhauMoi456' },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Đổi mật khẩu thành công' },
+          400: { description: 'Mật khẩu hiện tại sai, mật khẩu mới quá ngắn hoặc trùng mật khẩu cũ' },
           401: { description: 'Chưa đăng nhập hoặc token không hợp lệ' },
         },
       },
