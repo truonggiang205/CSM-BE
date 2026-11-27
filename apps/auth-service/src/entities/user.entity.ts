@@ -24,6 +24,15 @@ export class User {
   @Column({ nullable: true })
   branch_id: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  full_name: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  phone: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  avatar_url: string | null;
+
   @CreateDateColumn()
   created_at: Date;
 

@@ -161,23 +161,29 @@ export class ProxyController {
       return res.sendFile(safePath);
     }
 
-    // 2. Dự phòng chuyển tiếp qua product-service nếu chưa có ở đĩa local
-    try {
-      const productBaseUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
-      const upstream = await axios.get(`${productBaseUrl}/uploads/${safeFilename}`, {
-        responseType: 'stream',
-        validateStatus: () => true,
-      });
+    // 2. Dự phòng chuyển tiếp qua service sở hữu file nếu chưa có ở đĩa local
+    //    (ảnh đại diện "avatar-*" do auth-service lưu, còn lại do product-service lưu)
+    const upstreams = safeFilename.startsWith('avatar-')
+      ? [process.env.AUTH_SERVICE_URL || 'http://localhost:3001', process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002']
+      : [process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002'];
+    for (const baseUrl of upstreams) {
+      try {
+        const upstream = await axios.get(`${baseUrl}/uploads/${safeFilename}`, {
+          responseType: 'stream',
+          validateStatus: () => true,
+        });
 
-      if (upstream.status === 200) {
-        const contentType = upstream.headers['content-type'];
-        if (contentType) {
-          res.setHeader('content-type', String(contentType));
+        if (upstream.status === 200) {
+          const contentType = upstream.headers['content-type'];
+          if (contentType) {
+            res.setHeader('content-type', String(contentType));
+          }
+          return upstream.data.pipe(res);
         }
-        return upstream.data.pipe(res);
+        upstream.data?.resume?.();
+      } catch {
+        // thử upstream kế tiếp
       }
-    } catch (err) {
-      // upstream error
     }
 
     return res.status(HttpStatus.NOT_FOUND).json({
