@@ -193,6 +193,16 @@ describe('Order Service State Machine Test (May trang thai don hang)', () => {
       const mockReq = { user: { id: 'usr-customer-01', role: 'CUSTOMER' }, headers: {} };
       const res = await orderController.updateOrderStatus('order-sm-01', { status: OrderStatus.CANCELLED }, mockReq);
       expect(res.status).toBe(OrderStatus.CANCELLED);
+      // Kho đã bị trừ khi CONFIRMED -> phải hoàn kho (không phải release-stock)
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.stringContaining('/inventory/return-stock'),
+        expect.objectContaining({ referenceId: 'order-sm-01' }),
+        expect.anything(),
+      );
+      expect(mockedAxios.post).not.toHaveBeenCalledWith(
+        expect.stringContaining('/inventory/release-stock'),
+        expect.anything(),
+      );
     });
 
     it('CUSTOMER cố huỷ đơn khi đã SHIPPED -> Bị từ chối 403 Forbidden', async () => {
