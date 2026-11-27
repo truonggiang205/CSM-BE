@@ -1,0 +1,46 @@
+name: CI Backend
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  lint-test-build:
+    name: ESLint, Jest (coverage), Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: ESLint
+        run: npx eslint "apps/**/*.ts" "libs/**/*.ts" --format stylish | tee eslint-report.txt
+      - name: Jest + coverage
+        run: npx jest --runInBand --coverage --coverageReporters=text --coverageReporters=text-summary --coverageReporters=json-summary --coverageReporters=lcov | tee jest-report.txt
+      - name: Build all services
+        run: npm run build --workspaces --if-present
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-reports
+          path: |
+            eslint-report.txt
+            jest-report.txt
+            coverage/
+
+  secret-scan:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
