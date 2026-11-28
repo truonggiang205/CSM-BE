@@ -614,6 +614,54 @@ export class DiscountService implements OnModuleInit {
     });
   }
 
+  /**
+   * Quy tắc nghiệp vụ của voucher (dùng chung cho tạo mới và chỉnh sửa), khớp với form FE:
+   * - Mã 3–20 ký tự, chỉ chữ in hoa, số, '-' hoặc '_'
+   * - Tiền mặt: mức giảm ≥ 1.000đ và không lớn hơn đơn tối thiểu
+   * - Phần trăm: 1–100% và phải có mức giảm tối đa ≥ 1.000đ
+   * - Đơn tối thiểu = 0đ hoặc ≥ 1.000đ
+   * - Lượt dùng mỗi khách ≤ tổng lượt dùng
+   */
+  private assertVoucherRules(v: {
+    code: string;
+    discount_type: DiscountType;
+    discount_value: number;
+    min_order_value?: number | null;
+    max_discount_amount?: number | null;
+    usage_limit?: number | null;
+    max_usage_per_user?: number | null;
+  }) {
+    const fmt = (n: number) => `${new Intl.NumberFormat('vi-VN').format(n)}đ`;
+    if (!/^[A-Z0-9_-]{3,20}$/.test(v.code)) {
+      throw new BadRequestException('Mã voucher phải từ 3 đến 20 ký tự, chỉ gồm chữ in hoa không dấu, số, "-" hoặc "_".');
+    }
+    const value = Number(v.discount_value);
+    const minOrder = Number(v.min_order_value || 0);
+    if (minOrder !== 0 && minOrder < 1000) {
+      throw new BadRequestException('Đơn tối thiểu phải bằng 0đ (không yêu cầu) hoặc từ 1.000đ trở lên.');
+    }
+    if (v.discount_type === DiscountType.FIXED_AMOUNT) {
+      if (value < 1000) {
+        throw new BadRequestException('Mức giảm tiền mặt phải từ 1.000đ trở lên.');
+      }
+      if (value > minOrder) {
+        throw new BadRequestException(
+          `Mức giảm (${fmt(value)}) không được lớn hơn đơn tối thiểu (${fmt(minOrder)}).`,
+        );
+      }
+    } else {
+      if (value < 1 || value > 100) {
+        throw new BadRequestException('Phần trăm giảm giá phải từ 1% đến 100%.');
+      }
+      if (!v.max_discount_amount || Number(v.max_discount_amount) < 1000) {
+        throw new BadRequestException('Voucher giảm theo % phải có mức giảm tối đa từ 1.000đ trở lên.');
+      }
+    }
+    if (v.usage_limit && v.max_usage_per_user && Number(v.max_usage_per_user) > Number(v.usage_limit)) {
+      throw new BadRequestException('Lượt dùng mỗi khách không được lớn hơn tổng lượt dùng.');
+    }
+  }
+
   async createVoucher(dto: CreateVoucherDto) {
     const code = dto.code.trim().toUpperCase();
     const existing = await this.voucherRepo.findOne({ where: { code } });
@@ -621,14 +669,16 @@ export class DiscountService implements OnModuleInit {
       throw new ConflictException(`Mã voucher '${code}' đã tồn tại trong hệ thống.`);
     }
 
-    if (dto.discount_type === DiscountType.PERCENTAGE && dto.discount_value > 100) {
-      throw new BadRequestException('Phần trăm giảm giá không được vượt quá 100%.');
-    }
+    this.assertVoucherRules({ ...dto, code });
 
     const startDate = new Date(dto.start_date);
     const endDate = new Date(dto.end_date);
+    // Cho phép lệch 1 phút để bù độ trễ giữa lúc bấm tạo và lúc server nhận.
+    if (startDate.getTime() < Date.now() - 60_000) {
+      throw new BadRequestException('Thời gian bắt đầu không được ở quá khứ.');
+    }
     if (endDate <= startDate) {
-      throw new BadRequestException('Ngày kết thúc phải lớn hơn ngày bắt đầu áp dụng.');
+      throw new BadRequestException('Thời gian kết thúc phải sau thời gian bắt đầu.');
     }
 
     const voucher = this.voucherRepo.create({
@@ -707,8 +757,15 @@ export class DiscountService implements OnModuleInit {
       end_date: dto.end_date ? new Date(dto.end_date) : voucher.end_date,
     } as Voucher;
 
-    if (merged.discount_type === DiscountType.PERCENTAGE && Number(merged.discount_value) > 100) {
-      throw new BadRequestException('Phần trăm giảm giá không được vượt quá 100%.');
+    if (used === 0 || nextCode !== voucher.code) {
+      this.assertVoucherRules(merged);
+    } else {
+      // Voucher đã dùng: mã giữ nguyên (có thể là mã cũ không theo chuẩn mới), chỉ kiểm tra phần còn lại.
+      this.assertVoucherRules({ ...merged, code: 'LEGACY' });
+    }
+    if (dto.start_date && new Date(dto.start_date).getTime() !== new Date(voucher.start_date).getTime()
+      && new Date(dto.start_date).getTime() < Date.now() - 60_000) {
+      throw new BadRequestException('Thời gian bắt đầu không được ở quá khứ.');
     }
     if (new Date(merged.end_date).getTime() <= new Date(merged.start_date).getTime()) {
       throw new BadRequestException('Thời gian kết thúc phải sau thời gian bắt đầu.');

@@ -352,6 +352,7 @@ describe('DiscountService & DiscountController Unit Tests', () => {
           code: 'ADMINNEW',
           discount_type: DiscountType.FIXED_AMOUNT,
           discount_value: 30000,
+          min_order_value: 50000,
           start_date: new Date().toISOString(),
           end_date: new Date(Date.now() + 86400000).toISOString(),
         },
@@ -439,6 +440,60 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       const res = await controller.deleteVoucher('v-uuid-001', admin);
       expect(res.success).toBe(true);
       expect(mockVouchers).toHaveLength(0);
+    });
+  });
+
+  describe('3c. Kiểm tra dữ liệu khi tạo voucher (FE#45)', () => {
+    const future = (h: number) => new Date(Date.now() + h * 3600000).toISOString();
+    const base = {
+      code: 'NEWCODE',
+      discount_type: DiscountType.FIXED_AMOUNT,
+      discount_value: 20000,
+      min_order_value: 50000,
+      usage_limit: 100,
+      start_date: future(1),
+      end_date: future(48),
+    };
+
+    beforeEach(() => {
+      mockVouchers = [];
+    });
+
+    it('Chặn mức giảm tiền mặt dưới 1.000đ (VD: 14đ)', async () => {
+      await expect(service.createVoucher({ ...base, discount_value: 14 })).rejects.toThrow('từ 1.000đ');
+    });
+
+    it('Chặn mức giảm lớn hơn đơn tối thiểu (VD: giảm 20.000.000đ cho đơn 50.000đ, hoặc đơn 0đ)', async () => {
+      await expect(service.createVoucher({ ...base, discount_value: 20_000_000 })).rejects.toThrow(
+        'không được lớn hơn đơn tối thiểu',
+      );
+      await expect(service.createVoucher({ ...base, min_order_value: 0 })).rejects.toThrow(
+        'không được lớn hơn đơn tối thiểu',
+      );
+    });
+
+    it('Đơn tối thiểu phải bằng 0 hoặc từ 1.000đ; voucher % phải có giảm tối đa', async () => {
+      await expect(service.createVoucher({ ...base, discount_value: 100, min_order_value: 500 })).rejects.toThrow(
+        'Đơn tối thiểu',
+      );
+      await expect(
+        service.createVoucher({ ...base, discount_type: DiscountType.PERCENTAGE, discount_value: 10 }),
+      ).rejects.toThrow('giảm tối đa');
+    });
+
+    it('Chặn thời gian bắt đầu ở quá khứ và kết thúc trước bắt đầu', async () => {
+      await expect(
+        service.createVoucher({ ...base, start_date: new Date(Date.now() - 3600000).toISOString() }),
+      ).rejects.toThrow('quá khứ');
+      await expect(service.createVoucher({ ...base, end_date: future(0.5) })).rejects.toThrow(
+        'sau thời gian bắt đầu',
+      );
+    });
+
+    it('Chặn mã sai định dạng; dữ liệu hợp lệ thì tạo được', async () => {
+      await expect(service.createVoucher({ ...base, code: 'AB' })).rejects.toThrow('3 đến 20 ký tự');
+      const ok = await service.createVoucher(base);
+      expect(ok.code).toBe('NEWCODE');
     });
   });
 
