@@ -11,6 +11,7 @@ import axios from 'axios';
 import { Voucher, DiscountType } from './entities/voucher.entity';
 import { VoucherUsage, UsageStatus } from './entities/voucher-usage.entity';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { FlashSaleCampaign } from './entities/flash-sale-campaign.entity';
 import { FlashSaleItem, FlashSaleDiscountType } from './entities/flash-sale-item.entity';
 import { CreateFlashSaleDto, CreateFlashSaleItemDto } from './dto/create-flash-sale.dto';
@@ -640,11 +641,101 @@ export class DiscountService implements OnModuleInit {
     return this.voucherRepo.save(voucher);
   }
 
+  /**
+   * Trạng thái hiển thị của voucher — cùng quy tắc với FE (promoStatus):
+   * chưa tới giờ → UPCOMING, quá giờ → ENDED, hết lượt → SOLD_OUT,
+   * còn lại ACTIVE / PAUSED theo cờ is_active.
+   */
+  getVoucherStatus(voucher: Voucher, nowMs: number = Date.now()) {
+    const start = new Date(voucher.start_date).getTime();
+    const end = new Date(voucher.end_date).getTime();
+    if (nowMs < start) return 'UPCOMING';
+    if (nowMs > end) return 'ENDED';
+    if (voucher.usage_limit && voucher.used_count >= voucher.usage_limit) return 'SOLD_OUT';
+    return voucher.is_active ? 'ACTIVE' : 'PAUSED';
+  }
+
   async toggleVoucher(id: string) {
     const voucher = await this.voucherRepo.findOne({ where: { id } });
     if (!voucher) throw new NotFoundException('Không tìm thấy voucher');
+    const status = this.getVoucherStatus(voucher);
+    if (status === 'ENDED') {
+      throw new BadRequestException('Voucher đã kết thúc, không thể bật/tắt. Hãy chỉnh lại thời gian nếu muốn dùng tiếp.');
+    }
+    if (status === 'UPCOMING') {
+      throw new BadRequestException('Voucher chưa đến thời gian bắt đầu, hệ thống sẽ tự áp dụng khi tới giờ.');
+    }
+    if (status === 'SOLD_OUT') {
+      throw new BadRequestException('Voucher đã hết lượt dùng, không thể bật lại. Hãy tăng tổng lượt dùng trước.');
+    }
     voucher.is_active = !voucher.is_active;
     return this.voucherRepo.save(voucher);
+  }
+
+  async updateVoucher(id: string, dto: UpdateVoucherDto) {
+    const voucher = await this.voucherRepo.findOne({ where: { id } });
+    if (!voucher) throw new NotFoundException('Không tìm thấy voucher');
+
+    const used = Number(voucher.used_count) || 0;
+    const nextCode = dto.code !== undefined ? dto.code.trim().toUpperCase() : voucher.code;
+
+    if (used > 0) {
+      // Đã có đơn dùng mã → không cho đổi những trường làm sai lệch đơn cũ.
+      const changedLocked =
+        nextCode !== voucher.code ||
+        (dto.discount_type !== undefined && dto.discount_type !== voucher.discount_type) ||
+        (dto.discount_value !== undefined && Number(dto.discount_value) !== Number(voucher.discount_value));
+      if (changedLocked) {
+        throw new BadRequestException(
+          `Voucher đã được dùng ${used} lượt nên không thể đổi mã, kiểu giảm hoặc mức giảm.`,
+        );
+      }
+    }
+
+    if (nextCode !== voucher.code) {
+      const dup = await this.voucherRepo.findOne({ where: { code: nextCode } });
+      if (dup && dup.id !== voucher.id) {
+        throw new ConflictException(`Mã voucher '${nextCode}' đã tồn tại trong hệ thống.`);
+      }
+    }
+
+    const merged = {
+      ...voucher,
+      ...Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined)),
+      code: nextCode,
+      start_date: dto.start_date ? new Date(dto.start_date) : voucher.start_date,
+      end_date: dto.end_date ? new Date(dto.end_date) : voucher.end_date,
+    } as Voucher;
+
+    if (merged.discount_type === DiscountType.PERCENTAGE && Number(merged.discount_value) > 100) {
+      throw new BadRequestException('Phần trăm giảm giá không được vượt quá 100%.');
+    }
+    if (new Date(merged.end_date).getTime() <= new Date(merged.start_date).getTime()) {
+      throw new BadRequestException('Thời gian kết thúc phải sau thời gian bắt đầu.');
+    }
+    if (dto.end_date && new Date(merged.end_date).getTime() <= Date.now()) {
+      throw new BadRequestException('Thời gian kết thúc không được ở quá khứ.');
+    }
+    if (merged.usage_limit !== undefined && merged.usage_limit !== null && Number(merged.usage_limit) < used) {
+      throw new BadRequestException(`Tổng lượt dùng không được nhỏ hơn số lượt đã dùng (${used}).`);
+    }
+
+    return this.voucherRepo.save(merged);
+  }
+
+  async deleteVoucher(id: string) {
+    const voucher = await this.voucherRepo.findOne({ where: { id } });
+    if (!voucher) throw new NotFoundException('Không tìm thấy voucher');
+    const activeUsages = await this.usageRepo.count({
+      where: { voucher_id: id, status: UsageStatus.USED },
+    });
+    if (activeUsages > 0) {
+      throw new BadRequestException(
+        `Voucher đang gắn với ${activeUsages} đơn hàng nên không thể xoá (để còn hoàn mã khi huỷ đơn). Hãy tạm ngưng voucher thay vì xoá.`,
+      );
+    }
+    await this.voucherRepo.delete(id);
+    return { success: true, message: `Đã xoá voucher '${voucher.code}'.` };
   }
 
   private normalizeApplyDate(applyDate?: string | null): string | null {

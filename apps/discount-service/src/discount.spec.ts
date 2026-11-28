@@ -65,6 +65,10 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       return newV;
     }),
     create: jest.fn((dto: any) => ({ ...dto, id: `v-${Date.now()}`, used_count: 0, is_active: true })),
+    delete: jest.fn(async (id: string) => {
+      mockVouchers = mockVouchers.filter((v) => v.id !== id);
+      return { affected: 1 };
+    }),
   };
 
   const mockUsageRepo = {
@@ -382,6 +386,59 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       const mockReq = { headers: { 'x-internal-secret': 'csm-super-secure-internal-secret-token' } };
       const res = await controller.claimVoucher('CSM20K', 'usr-1', 'order-internal', mockReq);
       expect(res).toBeDefined();
+    });
+  });
+
+  describe('3b. Quản lý voucher: sửa, xoá, quy tắc bật/tắt (FE#44)', () => {
+    const admin = { headers: { 'x-user-role': 'ADMIN' } };
+
+    it('Không cho bật/tắt voucher đã kết thúc hoặc chưa bắt đầu', async () => {
+      mockVouchers = [
+        createMockVoucher({ id: 'v-ended', code: 'ENDED', end_date: new Date(Date.now() - 1000) }),
+        createMockVoucher({ id: 'v-soon', code: 'SOON', start_date: new Date(Date.now() + 3600000) }),
+      ];
+      await expect(service.toggleVoucher('v-ended')).rejects.toThrow('đã kết thúc');
+      await expect(service.toggleVoucher('v-soon')).rejects.toThrow('chưa đến thời gian bắt đầu');
+    });
+
+    it('Không cho bật lại voucher đã hết lượt dùng', async () => {
+      mockVouchers = [createMockVoucher({ usage_limit: 5, used_count: 5 })];
+      await expect(service.toggleVoucher('v-uuid-001')).rejects.toThrow('hết lượt dùng');
+    });
+
+    it('Sửa voucher chưa dùng: đổi được mức giảm và thời gian', async () => {
+      mockVouchers = [createMockVoucher()];
+      const res = await controller.updateVoucher(
+        'v-uuid-001',
+        { discount_value: 15000, end_date: new Date(Date.now() + 5 * 86400000).toISOString() },
+        admin,
+      );
+      expect(Number(res.discount_value)).toBe(15000);
+    });
+
+    it('Sửa voucher đã có lượt dùng: chặn đổi mức giảm, chặn tổng lượt < đã dùng', async () => {
+      mockVouchers = [createMockVoucher({ used_count: 3 })];
+      await expect(service.updateVoucher('v-uuid-001', { discount_value: 1000 })).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.updateVoucher('v-uuid-001', { usage_limit: 2 })).rejects.toThrow('không được nhỏ hơn');
+      const ok = await service.updateVoucher('v-uuid-001', { description: 'Mô tả mới' });
+      expect(ok.description).toBe('Mô tả mới');
+    });
+
+    it('Xoá voucher: chặn khi còn đơn đang dùng, cho xoá khi chưa dùng; CUSTOMER bị 403', async () => {
+      mockVouchers = [createMockVoucher()];
+      mockUsages = [
+        { id: 'u-1', voucher_id: 'v-uuid-001', user_id: 'usr', order_id: 'o-1', status: UsageStatus.USED } as any,
+      ];
+      await expect(service.deleteVoucher('v-uuid-001')).rejects.toThrow('không thể xoá');
+      mockUsages = [];
+      await expect(
+        controller.deleteVoucher('v-uuid-001', { headers: { 'x-user-role': 'CUSTOMER' } }),
+      ).rejects.toThrow(ForbiddenException);
+      const res = await controller.deleteVoucher('v-uuid-001', admin);
+      expect(res.success).toBe(true);
+      expect(mockVouchers).toHaveLength(0);
     });
   });
 
