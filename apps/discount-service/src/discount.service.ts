@@ -1161,7 +1161,55 @@ export class DiscountService implements OnModuleInit {
     return combo;
   }
 
+  /**
+   * Kiểm tra dữ liệu combo (khớp với form FE). Chỉ kiểm tra các trường có trong `dto`.
+   * - Tên 3-100 ký tự, mô tả ≤ 255 ký tự
+   * - Giá bán là số nguyên từ 1.000đ (không được bỏ trống / 0đ)
+   * - URL ảnh dạng http(s)://... hoặc /uploads/...
+   * - Số lượng mỗi món 1-99, không trùng món
+   */
+  private assertComboFields(dto: Partial<CreateComboDto>, isCreate: boolean) {
+    if (isCreate || dto.name !== undefined) {
+      const name = (dto.name || '').trim();
+      if (name.length < 3 || name.length > 100) {
+        throw new BadRequestException('Tên Combo phải từ 3 đến 100 ký tự');
+      }
+    }
+    if (dto.description && dto.description.length > 255) {
+      throw new BadRequestException('Mô tả Combo tối đa 255 ký tự');
+    }
+    if (isCreate || dto.combo_price !== undefined) {
+      const price = Number(dto.combo_price);
+      if (dto.combo_price === null || dto.combo_price === undefined || !Number.isFinite(price)) {
+        throw new BadRequestException('Vui lòng nhập giá bán Combo');
+      }
+      if (!Number.isInteger(price) || price < 1000) {
+        throw new BadRequestException('Giá bán Combo phải là số nguyên từ 1.000đ trở lên');
+      }
+      if (price > 100_000_000) {
+        throw new BadRequestException('Giá bán Combo không vượt quá 100.000.000đ');
+      }
+    }
+    const url = dto.image_url?.trim();
+    if (url && !/^https?:\/\/[^\s]+\.[^\s]+$/i.test(url) && !url.startsWith('/uploads/')) {
+      throw new BadRequestException('URL ảnh Combo không hợp lệ (cần dạng http:// hoặc https://)');
+    }
+    if (dto.items) {
+      const ids = dto.items.map((i) => i.product_id);
+      if (new Set(ids).size !== ids.length) {
+        throw new BadRequestException('Mỗi sản phẩm chỉ được thêm một lần vào combo');
+      }
+      if (dto.items.some((i) => !Number.isInteger(Number(i.quantity)) || Number(i.quantity) < 1 || Number(i.quantity) > 99)) {
+        throw new BadRequestException('Số lượng mỗi món trong combo phải từ 1 đến 99');
+      }
+    }
+  }
+
   async createCombo(dto: CreateComboDto): Promise<Combo> {
+    this.assertComboFields(dto, true);
+    if (dto.start_date && new Date(dto.start_date).getTime() < Date.now() - 60_000) {
+      throw new BadRequestException('Ngày bắt đầu không được ở quá khứ');
+    }
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('Combo phải có ít nhất 1 sản phẩm thành phần');
     }
@@ -1217,6 +1265,7 @@ export class DiscountService implements OnModuleInit {
 
   async updateCombo(id: string, dto: UpdateComboDto): Promise<Combo> {
     const combo = await this.getComboById(id);
+    this.assertComboFields(dto, false);
 
     if (dto.name !== undefined) combo.name = dto.name.trim();
     if (dto.description !== undefined) combo.description = dto.description?.trim() || null;

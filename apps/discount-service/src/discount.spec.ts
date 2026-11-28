@@ -177,6 +177,43 @@ describe('DiscountService & DiscountController Unit Tests', () => {
     controller = module.get<DiscountController>(DiscountController);
   });
 
+  describe('3d. Kiểm tra dữ liệu khi tạo combo (FE#28)', () => {
+    const baseCombo = {
+      name: 'Combo Bữa Sáng',
+      combo_price: 30000,
+      items: [
+        { product_id: 'p1', product_name: 'Bánh mì', original_price: 20000, quantity: 1 },
+        { product_id: 'p2', product_name: 'Cà phê', original_price: 20000, quantity: 1 },
+      ],
+    };
+
+    it('Bỏ trống giá bán hoặc giá 0đ / dưới 1.000đ -> bị chặn', async () => {
+      await expect(service.createCombo({ ...baseCombo, combo_price: undefined } as any)).rejects.toThrow(
+        'Vui lòng nhập giá bán',
+      );
+      await expect(service.createCombo({ ...baseCombo, combo_price: 0 })).rejects.toThrow('từ 1.000đ');
+      await expect(service.createCombo({ ...baseCombo, combo_price: 500 })).rejects.toThrow('từ 1.000đ');
+    });
+
+    it('URL ảnh nhập bừa -> bị chặn; URL https hoặc /uploads hợp lệ', async () => {
+      await expect(service.createCombo({ ...baseCombo, image_url: 'abc xyz' })).rejects.toThrow('URL ảnh');
+      await expect(
+        service.createCombo({ ...baseCombo, image_url: 'https://cdn.example.com/a.jpg' }),
+      ).resolves.toBeDefined();
+      await expect(service.createCombo({ ...baseCombo, image_url: '/uploads/abc.jpg' })).resolves.toBeDefined();
+    });
+
+    it('Món trùng, số lượng món quá lớn, tên quá ngắn -> bị chặn', async () => {
+      await expect(
+        service.createCombo({ ...baseCombo, items: [baseCombo.items[0], baseCombo.items[0]] }),
+      ).rejects.toThrow('một lần');
+      await expect(
+        service.createCombo({ ...baseCombo, items: [{ ...baseCombo.items[0], quantity: 100 }, baseCombo.items[1]] }),
+      ).rejects.toThrow('1 đến 99');
+      await expect(service.createCombo({ ...baseCombo, name: 'AB' })).rejects.toThrow('3 đến 100');
+    });
+  });
+
   describe('1. Logic tính toán và Validate Voucher (validateVoucher)', () => {
     it('Tính giảm tiền cố định (FIXED_AMOUNT) chính xác', async () => {
       const res = await service.validateVoucher('CSM20K', 100000, 'usr-1');

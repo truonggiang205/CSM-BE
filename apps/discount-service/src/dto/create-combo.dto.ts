@@ -44,8 +44,8 @@ export class CreateComboDto {
   @IsString()
   description?: string;
 
-  @IsNumber()
-  @Min(0, { message: 'Giá combo phải lớn hơn hoặc bằng 0' })
+  @IsNumber({}, { message: 'Giá bán Combo phải là số' })
+  @Min(1000, { message: 'Giá bán Combo phải từ 1.000đ trở lên' })
   combo_price: number;
 
   @IsOptional()
