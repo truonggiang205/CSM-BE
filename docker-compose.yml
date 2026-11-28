@@ -242,6 +242,8 @@ services:
       DISCOUNT_DB_URL: mysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:?Vui lòng cấu hình MYSQL_PASSWORD trong .env}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/csm_discount
       INTERNAL_SECRET: ${INTERNAL_SECRET:?Vui lòng cấu hình INTERNAL_SECRET trong .env}
       ENABLE_TEST_DELAY: ${ENABLE_TEST_DELAY:-false}
+      PRODUCT_SERVICE_URL: http://product-service:${PRODUCT_PORT:-3002}
+      INVENTORY_SERVICE_URL: http://inventory-service:${INVENTORY_PORT:-3003}
     ports:
       - "${DISCOUNT_PORT:-3007}:${DISCOUNT_PORT:-3007}"
     depends_on:
