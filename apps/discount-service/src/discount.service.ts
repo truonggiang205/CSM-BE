@@ -1177,7 +1177,8 @@ export class DiscountService implements OnModuleInit {
     const currentCampaign = flashSale.campaign;
     const deals = [];
 
-    if (flashSale.status === 'ACTIVE' && currentCampaign) {
+    // Trả cả ca SẮP DIỄN RA để trang Ưu đãi hiển thị trước món & giờ mở bán (đồng bộ với trang chủ)
+    if ((flashSale.status === 'ACTIVE' || flashSale.status === 'UPCOMING') && currentCampaign) {
       for (const item of currentCampaign.items || []) {
         deals.push({
           id: item.id,
@@ -1195,6 +1196,8 @@ export class DiscountService implements OnModuleInit {
           campaign_name: currentCampaign.name,
           start_time: currentCampaign.start_time,
           end_time: currentCampaign.end_time,
+          start_date_time: flashSale.startDateTime,
+          end_date_time: flashSale.endDateTime,
           status: flashSale.status,
         });
       }
