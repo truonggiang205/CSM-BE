@@ -420,6 +420,27 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       });
     });
 
+    it('today-deals trả về cả món của ca SẮP DIỄN RA', async () => {
+      mockCampaignRepo.find.mockResolvedValueOnce([
+        {
+          id: 'fs-up',
+          name: 'Ca tối',
+          start_date: '2099-01-01',
+          end_date: '2099-01-01',
+          start_time: '18:00:00',
+          end_time: '20:00:00',
+          is_active: true,
+          items: [
+            { id: 'i1', product_id: 'p1', product_name: 'Mì ly', original_price: 10000, sale_price: 8000, quantity_limit: 10, sold_count: 0, max_per_user: 2 },
+          ],
+        },
+      ] as any);
+      const res: any = await service.getTodayDeals();
+      expect(res.flashSale.status).toBe('UPCOMING');
+      expect(res.deals).toHaveLength(1);
+      expect(res.deals[0]).toMatchObject({ product_id: 'p1', status: 'UPCOMING' });
+    });
+
     it('Dữ liệu cũ chỉ gửi sale_price -> vẫn hoạt động, coi như giảm %', async () => {
       const res: any = await service.createFlashSale(baseDto({ sale_price: 16000 }) as any);
       expect(res.items[0]).toMatchObject({ sale_price: 16000, discount_percentage: 20, discount_type: 'PERCENT' });
