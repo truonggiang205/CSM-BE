@@ -91,6 +91,13 @@ export class OrderController {
           );
         }
 
+        if (product.is_active === false) {
+          throw new HttpException(
+            `Sản phẩm "${product.name}" đang tạm ngưng bán, vui lòng bỏ khỏi giỏ hàng`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
         const basePrice = Number(product.base_price) || 0;
         const flashSaleInfo = activeFlashSaleMap.get(product.id.toString());
         const qty = Number(item.quantity) || 1;

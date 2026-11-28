@@ -167,7 +167,8 @@ export class StorefrontController {
     // Riêng FLASH_SALE: sản phẩm & giá lấy từ chiến dịch Flash Sale (discount-service),
     // khối ở đây chỉ giữ tiêu đề / mô tả / lịch hiển thị nên không cần sản phẩm.
     const usable = (s: HomeSection) =>
-      isLive(s, now) && (s.type === 'FLASH_SALE' || (s.items || []).some((i) => i.product));
+      isLive(s, now) &&
+      (s.type === 'FLASH_SALE' || (s.items || []).some((i) => i.product && i.product.is_active !== false));
 
     const sections: Record<string, any> = {};
     for (const type of HOME_SECTION_TYPES) {
@@ -572,8 +573,9 @@ export class StorefrontController {
   }
 
   private serializeSection(section: HomeSection, includeMeta = false) {
+    // Trang khách (includeMeta = false) ẩn sản phẩm đang Tạm ngưng; trang quản trị vẫn thấy để gỡ ra.
     const items = [...(section.items || [])]
-      .filter((i) => i.product)
+      .filter((i) => i.product && (includeMeta || i.product.is_active !== false))
       .sort((a, b) => a.sort_order - b.sort_order);
     return {
       id: section.id,

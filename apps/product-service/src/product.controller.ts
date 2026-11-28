@@ -86,7 +86,7 @@ export class ProductController {
   // --- PRODUCT CRUD ---
 
   @Get('products')
-  async getAllProducts(@Query() query: QueryProductDto) {
+  async getAllProducts(@Query() query: QueryProductDto, @Req() req?: any) {
     if (
       query.minPrice !== undefined &&
       query.maxPrice !== undefined &&
@@ -102,6 +102,13 @@ export class ProductController {
     const qb = this.productRepository
       .createQueryBuilder('product')
       .leftJoinAndSelect('product.category', 'category');
+
+    // Khách hàng chỉ thấy sản phẩm Đang bán; ADMIN xem được cả sản phẩm Tạm ngưng khi yêu cầu.
+    const role = req?.headers?.['x-user-role'] || req?.user?.role;
+    const includeInactive = query.includeInactive === 'true' && role === 'ADMIN';
+    if (!includeInactive) {
+      qb.andWhere('product.is_active = :active', { active: true });
+    }
 
     if (query.q && query.q.trim()) {
       const searchTerm = `%${query.q.trim()}%`;
@@ -197,6 +204,20 @@ export class ProductController {
     return this.productRepository.save(product);
   }
 
+  @Roles('ADMIN')
+  @Patch('products/:id/status')
+  async updateProductStatus(@Param('id') id: string, @Body() body: { is_active?: boolean }) {
+    if (typeof body?.is_active !== 'boolean') {
+      throw new BadRequestException('Vui lòng chọn trạng thái: is_active phải là true (Đang bán) hoặc false (Tạm ngưng)');
+    }
+    const product = await this.productRepository.findOne({ where: { id }, relations: ['category'] });
+    if (!product) {
+      throw new NotFoundException('Không tìm thấy sản phẩm');
+    }
+    product.is_active = body.is_active;
+    return this.productRepository.save(product);
+  }
+
   @Get('products/:id')
   async getProductById(@Param('id') id: string) {
     const product = await this.productRepository.findOne({
@@ -248,6 +269,7 @@ export class ProductController {
     if (body.base_price !== undefined) product.base_price = body.base_price;
     if (body.image_url !== undefined) product.image_url = body.image_url;
     if (body.is_featured !== undefined) product.is_featured = body.is_featured;
+    if (body.is_active !== undefined) product.is_active = body.is_active;
     if (body.curator_note !== undefined) product.curator_note = body.curator_note;
 
     return this.productRepository.save(product);

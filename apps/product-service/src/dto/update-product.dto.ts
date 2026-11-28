@@ -29,6 +29,10 @@ export class UpdateProductDto {
   is_featured?: boolean;
 
   @IsOptional()
+  @IsBoolean({ message: 'is_active phải là true hoặc false' })
+  is_active?: boolean;
+
+  @IsOptional()
   @IsString()
   curator_note?: string;
 }

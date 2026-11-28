@@ -104,6 +104,7 @@ describe('ProductController & RolesGuard Unit Tests', () => {
       description: 'Nước uống giải khát',
       base_price: 15000,
       image_url: null as any,
+      is_active: true,
       category: null as any,
       created_at: new Date(),
       updated_at: new Date(),
@@ -368,6 +369,43 @@ describe('ProductController & RolesGuard Unit Tests', () => {
       expect(result.totalPages).toBe(0);
       expect(result.page).toBe(1);
       expect(result.limit).toBe(10);
+    });
+  });
+
+  describe('Trạng thái bán Đang bán / Tạm ngưng (FE#48)', () => {
+    const buildQb = () => ({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    });
+
+    it('Khách hàng chỉ thấy sản phẩm Đang bán, kể cả khi tự gửi includeInactive=true', async () => {
+      const qb: any = buildQb();
+      mockProductRepo.createQueryBuilder.mockReturnValue(qb);
+      await controller.getAllProducts({ includeInactive: 'true' }, { headers: { 'x-user-role': 'CUSTOMER' } });
+      expect(qb.andWhere).toHaveBeenCalledWith('product.is_active = :active', { active: true });
+    });
+
+    it('ADMIN gửi includeInactive=true -> thấy cả sản phẩm Tạm ngưng', async () => {
+      const qb: any = buildQb();
+      mockProductRepo.createQueryBuilder.mockReturnValue(qb);
+      await controller.getAllProducts({ includeInactive: 'true' }, { headers: { 'x-user-role': 'ADMIN' } });
+      expect(qb.andWhere).not.toHaveBeenCalledWith('product.is_active = :active', { active: true });
+    });
+
+    it('PATCH /products/:id/status đổi trạng thái; thiếu is_active -> 400; không có sản phẩm -> 404', async () => {
+      mockProductRepo.findOne.mockResolvedValueOnce({ id: 'p1', name: 'Nước suối', is_active: true });
+      const res = await controller.updateProductStatus('p1', { is_active: false });
+      expect(res.is_active).toBe(false);
+
+      await expect(controller.updateProductStatus('p1', {} as any)).rejects.toThrow(BadRequestException);
+
+      mockProductRepo.findOne.mockResolvedValueOnce(null);
+      await expect(controller.updateProductStatus('nope', { is_active: true })).rejects.toThrow(NotFoundException);
     });
   });
 });

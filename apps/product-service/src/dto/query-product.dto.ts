@@ -28,6 +28,11 @@ export class QueryProductDto {
   })
   sort?: string;
 
+  /** Chỉ ADMIN: lấy cả sản phẩm đang tạm ngưng (trang quản trị). */
+  @IsOptional()
+  @IsIn(['true', 'false'], { message: 'includeInactive phải là true hoặc false' })
+  includeInactive?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'page phải là số nguyên' })
