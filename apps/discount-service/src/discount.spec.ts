@@ -393,7 +393,16 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       start_time: '10:00:00',
       end_time: '12:00:00',
       is_active: false,
-      items: [{ product_id: 'p1', product_name: 'Mì ly', original_price: 20000, ...item }],
+      items: [
+        {
+          product_id: 'p1',
+          product_name: 'Mì ly',
+          original_price: 20000,
+          quantity_limit: 50,
+          max_per_user: 2,
+          ...item,
+        },
+      ],
     });
 
     it('Giảm theo % -> server tự tính giá sale', async () => {
@@ -437,6 +446,35 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       await expect(
         service.createFlashSale(baseDto({ discount_type: FlashSaleDiscountType.PERCENT, discount_value: 100 }) as any),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('Thời gian bắt đầu ở quá khứ -> Bị từ chối', async () => {
+      const dto: any = baseDto({ discount_type: FlashSaleDiscountType.PERCENT, discount_value: 10 });
+      dto.start_date = '2020-01-01';
+      dto.end_date = '2099-01-01';
+      await expect(service.createFlashSale(dto)).rejects.toThrow('không được ở quá khứ');
+    });
+
+    it('Tối đa / khách lớn hơn số suất mở bán -> Bị từ chối', async () => {
+      await expect(
+        service.createFlashSale(
+          baseDto({ discount_type: FlashSaleDiscountType.PERCENT, discount_value: 10, quantity_limit: 2, max_per_user: 3 }) as any,
+        ),
+      ).rejects.toThrow('không được lớn hơn số suất mở bán');
+    });
+
+    it('Thiếu số suất mở bán -> Bị từ chối thay vì tự điền 50', async () => {
+      await expect(
+        service.createFlashSale(
+          baseDto({ discount_type: FlashSaleDiscountType.PERCENT, discount_value: 10, quantity_limit: undefined }) as any,
+        ),
+      ).rejects.toThrow('Số suất mở bán');
+    });
+
+    it('Một món bị thêm trùng trong ca -> Bị từ chối', async () => {
+      const dto: any = baseDto({ discount_type: FlashSaleDiscountType.PERCENT, discount_value: 10 });
+      dto.items.push({ ...dto.items[0] });
+      await expect(service.createFlashSale(dto)).rejects.toThrow('bị thêm trùng');
     });
 
     it('CUSTOMER tạo Flash Sale hoặc Combo -> Bị chặn 403', () => {

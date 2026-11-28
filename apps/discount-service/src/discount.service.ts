@@ -732,7 +732,7 @@ export class DiscountService implements OnModuleInit {
 
       if (isOverlap) {
         throw new ConflictException(
-          `Khoảng thời gian ${b1.startDate} ${b1.startTime.slice(0, 5)} - ${b1.endDate} ${b1.endTime.slice(0, 5)} bị trùng với ca Giờ Vàng '${c.name}' (${b2.startDate} ${b2.startTime.slice(0, 5)} - ${b2.endDate} ${b2.endTime.slice(0, 5)}).`,
+          `Khung giờ ${this.formatVnDateTime(b1.startMs)} → ${this.formatVnDateTime(b1.endMs)} bị trùng với ca Giờ Vàng "${c.name}" (${this.formatVnDateTime(b2.startMs)} → ${this.formatVnDateTime(b2.endMs)}).`,
         );
       }
     }
@@ -786,9 +786,78 @@ export class DiscountService implements OnModuleInit {
       discount_percentage: Math.round(((originalPrice - salePrice) / originalPrice) * 100),
       discount_type: discountType,
       discount_value: discountValue,
-      quantity_limit: Number(i.quantity_limit) || 50,
-      max_per_user: Number(i.max_per_user) || 2,
+      quantity_limit: Number(i.quantity_limit),
+      max_per_user: Number(i.max_per_user),
     };
+  }
+
+  /** Tổng tồn kho còn bán được của sản phẩm trên tất cả chi nhánh (null nếu không gọi được Inventory). */
+  private async fetchTotalAvailableStock(productId: string): Promise<number | null> {
+    try {
+      const baseUrl = process.env.INVENTORY_SERVICE_URL || 'http://localhost:3003';
+      const res = await axios.get(`${baseUrl}/inventory/product/${encodeURIComponent(productId)}`, {
+        timeout: 3000,
+      });
+      const rows: any[] = Array.isArray(res.data) ? res.data : [];
+      return rows.reduce((sum, r) => {
+        const available =
+          r?.available !== undefined
+            ? Number(r.available)
+            : Number(r?.quantity || 0) - Number(r?.reserved_quantity || 0);
+        return sum + Math.max(0, Number.isFinite(available) ? available : 0);
+      }, 0);
+    } catch {
+      return null;
+    }
+  }
+
+  private formatVnDateTime(ms: number): string {
+    const d = new Date(ms + 7 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} - ${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+  }
+
+  /**
+   * Kiểm tra số suất của từng món: số nguyên dương, tối đa/khách không vượt số suất,
+   * không trùng sản phẩm, số suất còn mở bán không vượt tồn kho khả dụng.
+   */
+  private async validateFlashSaleItems(
+    items: CreateFlashSaleItemDto[],
+    soldByProduct: Map<string, number> = new Map(),
+  ) {
+    const seen = new Set<string>();
+    for (const i of items) {
+      const name = i.product_name || i.product_id;
+      const pid = String(i.product_id);
+      if (seen.has(pid)) {
+        throw new BadRequestException(`Món "${name}" bị thêm trùng trong cùng một ca Giờ Vàng.`);
+      }
+      seen.add(pid);
+
+      const quantity = Number(i.quantity_limit);
+      const maxPerUser = Number(i.max_per_user);
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new BadRequestException(`Số suất mở bán của "${name}" phải là số nguyên lớn hơn 0.`);
+      }
+      if (!Number.isInteger(maxPerUser) || maxPerUser < 1) {
+        throw new BadRequestException(`Số suất tối đa / khách của "${name}" phải là số nguyên lớn hơn 0.`);
+      }
+      if (maxPerUser > quantity) {
+        throw new BadRequestException(
+          `Tối đa / khách của "${name}" (${maxPerUser}) không được lớn hơn số suất mở bán (${quantity}).`,
+        );
+      }
+      const sold = soldByProduct.get(pid) || 0;
+      if (quantity < sold) {
+        throw new BadRequestException(`Số suất mở bán của "${name}" không được nhỏ hơn số suất đã bán (${sold}).`);
+      }
+      const stock = await this.fetchTotalAvailableStock(pid);
+      if (stock !== null && quantity - sold > stock) {
+        throw new BadRequestException(
+          `Số suất còn mở bán của "${name}" (${quantity - sold}) vượt quá tồn kho khả dụng (${stock}).`,
+        );
+      }
+    }
   }
 
   async createFlashSale(dto: CreateFlashSaleDto) {
@@ -813,6 +882,14 @@ export class DiscountService implements OnModuleInit {
         'Thời điểm kết thúc (ngày & giờ kết thúc) phải lớn hơn thời điểm bắt đầu.',
       );
     }
+    const nowMs = Date.now();
+    if (bounds.startMs < nowMs - 60_000) {
+      throw new BadRequestException(
+        `Thời gian bắt đầu (${this.formatVnDateTime(bounds.startMs)}) không được ở quá khứ.`,
+      );
+    }
+
+    await this.validateFlashSaleItems(dto.items || []);
 
     if (dto.is_active !== false) {
       await this.validateNoOverlappingCampaign(
@@ -889,6 +966,27 @@ export class DiscountService implements OnModuleInit {
       throw new BadRequestException(
         'Thời điểm kết thúc (ngày & giờ kết thúc) phải lớn hơn thời điểm bắt đầu.',
       );
+    }
+
+    const nowMs = Date.now();
+    const oldBounds = this.getCampaignDateTimeBounds(campaign);
+    if (bounds.startMs !== oldBounds.startMs && bounds.startMs < nowMs - 60_000) {
+      throw new BadRequestException(
+        `Thời gian bắt đầu (${this.formatVnDateTime(bounds.startMs)}) không được ở quá khứ.`,
+      );
+    }
+    if (bounds.endMs !== oldBounds.endMs && bounds.endMs <= nowMs) {
+      throw new BadRequestException(
+        `Thời gian kết thúc (${this.formatVnDateTime(bounds.endMs)}) đã ở quá khứ.`,
+      );
+    }
+
+    if (dto.items && Array.isArray(dto.items)) {
+      const soldMap = new Map<string, number>();
+      for (const old of campaign.items || []) {
+        soldMap.set(String(old.product_id), Number(old.sold_count) || 0);
+      }
+      await this.validateFlashSaleItems(dto.items, soldMap);
     }
 
     if (targetActive) {
