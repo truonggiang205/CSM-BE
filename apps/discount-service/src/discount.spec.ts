@@ -322,6 +322,23 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       await service.releaseVoucher('CSM20K', 'usr-1', 'order-202');
       expect(mockVouchers[0].used_count).toBe(0); // Không bị -1!
     });
+
+    it('FE#46: khách dùng hết lượt, huỷ đơn -> mã được hoàn và khách dùng lại được', async () => {
+      // Voucher mỗi khách chỉ dùng 1 lượt
+      mockVouchers[0].used_count = 0;
+      mockVouchers[0].max_usage_per_user = 1;
+      mockUsages = [];
+
+      await service.claimVoucher('CSM20K', 'usr-46', 'order-46a');
+      await expect(service.validateVoucher('CSM20K', 100000, 'usr-46')).rejects.toThrow('hết lượt');
+
+      await service.releaseVoucher('CSM20K', 'usr-46', 'order-46a');
+
+      const again = await service.validateVoucher('CSM20K', 100000, 'usr-46');
+      expect(again.valid).toBe(true);
+      const publicList = await service.getPublicVouchers('usr-46');
+      expect(publicList.map((v) => v.code)).toContain('CSM20K');
+    });
   });
 
   describe('3. Phân quyền và Bảo mật (DiscountController Authorization)', () => {
