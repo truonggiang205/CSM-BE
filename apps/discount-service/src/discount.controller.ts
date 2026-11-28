@@ -173,6 +173,29 @@ export class DiscountController {
     return this.discountService.deleteFlashSale(id);
   }
 
+  /** Suất Giờ Vàng còn lại của ca đang chạy và của khách hiện tại (FE giới hạn số lượng trong giỏ). */
+  @Get(['flash-sales/current/quota', 'discounts/flash-sales/current/quota'])
+  getFlashSaleQuota(@Req() req?: any) {
+    return this.discountService.getFlashSaleQuota(req?.headers?.['x-user-id']);
+  }
+
+  /** order-service gọi nội bộ để giữ suất Giờ Vàng cho đơn (có khoá dòng, chống bán vượt suất). */
+  @Post(['flash-sales/claim', 'discounts/flash-sales/claim'])
+  claimFlashSale(
+    @Body() body: { orderId: string; userId: string; items: Array<{ productId: string; quantity: number }> },
+    @Req() req?: any,
+  ) {
+    assertInternalOrAdmin(req);
+    return this.discountService.claimFlashSaleForOrder(body?.orderId, body?.userId, body?.items || []);
+  }
+
+  /** order-service gọi nội bộ khi huỷ đơn / rollback để trả suất về đúng ca. */
+  @Post(['flash-sales/release', 'discounts/flash-sales/release'])
+  releaseFlashSale(@Body('orderId') orderId: string, @Req() req?: any) {
+    assertInternalOrAdmin(req);
+    return this.discountService.releaseFlashSaleForOrder(orderId);
+  }
+
   @Post(['flash-sales/record-purchase', 'discounts/flash-sales/record-purchase'])
   recordFlashSalePurchases(
     @Body('items') items: Array<{ productId: string; quantity: number }>,

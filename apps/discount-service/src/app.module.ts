@@ -11,6 +11,7 @@ import { FlashSaleItem } from './entities/flash-sale-item.entity';
 import { Combo } from './entities/combo.entity';
 import { ComboItem } from './entities/combo-item.entity';
 import { SpinHistory } from './entities/spin-history.entity';
+import { FlashSalePurchase } from './entities/flash-sale-purchase.entity';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { SpinHistory } from './entities/spin-history.entity';
       useFactory: (config: ConfigService) => ({
         type: 'mysql',
         url: config.getOrThrow<string>('DISCOUNT_DB_URL'),
-        entities: [Voucher, VoucherUsage, FlashSaleCampaign, FlashSaleItem, Combo, ComboItem, SpinHistory],
+        entities: [Voucher, VoucherUsage, FlashSaleCampaign, FlashSaleItem, Combo, ComboItem, SpinHistory, FlashSalePurchase],
         synchronize:
           config.get<string>('NODE_ENV') === 'development' ||
           config.get<string>('DB_SYNC') === 'true',
@@ -40,7 +41,7 @@ import { SpinHistory } from './entities/spin-history.entity';
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Voucher, VoucherUsage, FlashSaleCampaign, FlashSaleItem, Combo, ComboItem, SpinHistory]),
+    TypeOrmModule.forFeature([Voucher, VoucherUsage, FlashSaleCampaign, FlashSaleItem, Combo, ComboItem, SpinHistory, FlashSalePurchase]),
   ],
   controllers: [DiscountController],
   providers: [DiscountService],

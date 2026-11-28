@@ -20,6 +20,7 @@ import { ComboItem } from './entities/combo-item.entity';
 import { CreateComboDto } from './dto/create-combo.dto';
 import { UpdateComboDto } from './dto/update-combo.dto';
 import { SpinHistory } from './entities/spin-history.entity';
+import { FlashSalePurchase, FlashSalePurchaseStatus } from './entities/flash-sale-purchase.entity';
 
 @Injectable()
 export class DiscountService implements OnModuleInit {
@@ -1041,7 +1042,7 @@ export class DiscountService implements OnModuleInit {
           discount_type: item.discount_type || FlashSaleDiscountType.PERCENT,
           discount_value: Number(item.discount_value) || 0,
           quantity_limit: Number(item.quantity_limit) || 50,
-          sold_count: Number(item.sold_count) || 0,
+          sold_count: Math.min(Number(item.quantity_limit) || 0, Number(item.sold_count) || 0),
           max_per_user: Number(item.max_per_user) || 2,
           campaign_id: currentCampaign.id,
           campaign_name: currentCampaign.name,
@@ -1057,6 +1058,176 @@ export class DiscountService implements OnModuleInit {
       vouchers,
       deals,
     };
+  }
+
+  /**
+   * Số suất Giờ Vàng còn lại của ca đang diễn ra, và số suất khách này còn được mua.
+   * FE dùng để giới hạn nút tăng số lượng trong giỏ hàng.
+   */
+  async getFlashSaleQuota(userId?: string) {
+    const current = await this.getActiveOrUpcomingFlashSale();
+    if (current.status !== 'ACTIVE' || !current.campaign) {
+      return { status: current.status, campaignId: current.campaign?.id || null, items: [] };
+    }
+    const items = current.items || [];
+    const boughtByItem = new Map<string, number>();
+    if (userId) {
+      const rows = await this.dataSource.getRepository(FlashSalePurchase).find({
+        where: { user_id: String(userId), campaign_id: current.campaign.id, status: FlashSalePurchaseStatus.RESERVED },
+      });
+      for (const r of rows) {
+        boughtByItem.set(r.flash_sale_item_id, (boughtByItem.get(r.flash_sale_item_id) || 0) + Number(r.quantity));
+      }
+    }
+    return {
+      status: current.status,
+      campaignId: current.campaign.id,
+      items: items.map((it) => {
+        const remaining = Math.max(0, Number(it.quantity_limit) - Number(it.sold_count || 0));
+        const bought = boughtByItem.get(it.id) || 0;
+        const userRemaining = Math.max(0, Number(it.max_per_user) - bought);
+        return {
+          productId: String(it.product_id),
+          salePrice: Number(it.sale_price),
+          originalPrice: Number(it.original_price),
+          quantityLimit: Number(it.quantity_limit),
+          soldCount: Math.min(Number(it.quantity_limit), Number(it.sold_count || 0)),
+          remaining,
+          maxPerUser: Number(it.max_per_user),
+          userBought: bought,
+          /** Số suất giá sale khách còn mua được = min(suất còn lại của ca, suất còn lại của khách). */
+          userRemaining: Math.min(remaining, userRemaining),
+        };
+      }),
+    };
+  }
+
+  /**
+   * Cấp suất Giờ Vàng cho một đơn hàng (gọi nội bộ từ order-service, chống race condition).
+   *
+   * Khoá dòng flash_sale_items (SELECT ... FOR UPDATE) trong một transaction nên nhiều khách đặt
+   * cùng lúc sẽ được xử lý tuần tự: tổng suất cấp ra không bao giờ vượt quantity_limit.
+   * Mỗi sản phẩm: số suất giá sale = min(số lượng đặt, suất còn lại của ca, suất còn lại của khách);
+   * phần dư (nếu có) order-service tính theo giá gốc.
+   * Idempotent theo orderId: gọi lại trả về đúng phân bổ đã cấp.
+   */
+  async claimFlashSaleForOrder(
+    orderId: string,
+    userId: string,
+    items: Array<{ productId: string; quantity: number }>,
+  ) {
+    if (!orderId) throw new BadRequestException('Thiếu orderId khi cấp suất Giờ Vàng');
+    const purchaseRepo = this.dataSource.getRepository(FlashSalePurchase);
+    const existing = await purchaseRepo.find({ where: { order_id: String(orderId) } });
+    if (existing.length > 0) {
+      return {
+        orderId,
+        allocations: existing
+          .filter((p) => p.status === FlashSalePurchaseStatus.RESERVED)
+          .map((p) => ({ productId: p.product_id, saleQuantity: p.quantity, salePrice: Number(p.sale_price) })),
+      };
+    }
+
+    const current = await this.getActiveOrUpcomingFlashSale();
+    if (current.status !== 'ACTIVE' || !current.campaign || !(current.items || []).length) {
+      return { orderId, allocations: [] };
+    }
+    const campaignId = current.campaign.id;
+    const itemByProduct = new Map((current.items || []).map((it) => [String(it.product_id), it]));
+
+    const requested = new Map<string, number>();
+    for (const r of items || []) {
+      const qty = Math.max(0, Math.floor(Number(r.quantity) || 0));
+      if (!r.productId || qty <= 0) continue;
+      requested.set(String(r.productId), (requested.get(String(r.productId)) || 0) + qty);
+    }
+    const targets = Array.from(requested.entries()).filter(([pid]) => itemByProduct.has(pid));
+    if (targets.length === 0) return { orderId, allocations: [] };
+
+    return this.dataSource.transaction(async (manager) => {
+      const allocations: Array<{ productId: string; saleQuantity: number; salePrice: number }> = [];
+      // Khoá theo thứ tự id cố định để tránh deadlock khi hai đơn cùng chứa nhiều món
+      const ordered = targets
+        .map(([pid, qty]) => ({ pid, qty, itemId: itemByProduct.get(pid)!.id }))
+        .sort((a, b) => a.itemId.localeCompare(b.itemId));
+
+      for (const t of ordered) {
+        const item = await manager
+          .createQueryBuilder(FlashSaleItem, 'i')
+          .setLock('pessimistic_write')
+          .where('i.id = :id', { id: t.itemId })
+          .getOne();
+        if (!item) continue;
+
+        const remaining = Math.max(0, Number(item.quantity_limit) - Number(item.sold_count || 0));
+        let userRemaining = Number(item.max_per_user);
+        if (userId && userId !== 'anonymous') {
+          const raw = await manager
+            .createQueryBuilder(FlashSalePurchase, 'p')
+            .setLock('pessimistic_write')
+            .select('COALESCE(SUM(p.quantity), 0)', 'total')
+            .where('p.user_id = :userId AND p.flash_sale_item_id = :itemId AND p.status = :status', {
+              userId: String(userId),
+              itemId: item.id,
+              status: FlashSalePurchaseStatus.RESERVED,
+            })
+            .getRawOne();
+          userRemaining = Math.max(0, Number(item.max_per_user) - (Number(raw?.total) || 0));
+        }
+
+        const saleQuantity = Math.min(t.qty, remaining, userRemaining);
+        if (saleQuantity <= 0) continue;
+
+        item.sold_count = Number(item.sold_count || 0) + saleQuantity;
+        await manager.save(FlashSaleItem, item);
+        await manager.save(
+          FlashSalePurchase,
+          manager.create(FlashSalePurchase, {
+            order_id: String(orderId),
+            user_id: String(userId || 'anonymous'),
+            campaign_id: campaignId,
+            flash_sale_item_id: item.id,
+            product_id: t.pid,
+            quantity: saleQuantity,
+            sale_price: Number(item.sale_price),
+            status: FlashSalePurchaseStatus.RESERVED,
+          }),
+        );
+        allocations.push({ productId: t.pid, saleQuantity, salePrice: Number(item.sale_price) });
+      }
+      return { orderId, allocations };
+    });
+  }
+
+  /** Trả lại suất Giờ Vàng của một đơn (huỷ đơn / rollback saga). Idempotent, hoàn đúng ca kể cả ca đã kết thúc. */
+  async releaseFlashSaleForOrder(orderId: string) {
+    if (!orderId) return { success: true, released: 0 };
+    return this.dataSource.transaction(async (manager) => {
+      const rows = await manager
+        .createQueryBuilder(FlashSalePurchase, 'p')
+        .setLock('pessimistic_write')
+        .where('p.order_id = :orderId AND p.status = :status', {
+          orderId: String(orderId),
+          status: FlashSalePurchaseStatus.RESERVED,
+        })
+        .getMany();
+      let released = 0;
+      for (const row of rows) {
+        const item = await manager
+          .createQueryBuilder(FlashSaleItem, 'i')
+          .setLock('pessimistic_write')
+          .where('i.id = :id', { id: row.flash_sale_item_id })
+          .getOne();
+        if (item) {
+          item.sold_count = Math.max(0, Number(item.sold_count || 0) - Number(row.quantity));
+          await manager.save(FlashSaleItem, item);
+        }
+        row.status = FlashSalePurchaseStatus.RELEASED;
+        await manager.save(FlashSalePurchase, row);
+        released += Number(row.quantity);
+      }
+      return { success: true, released };
+    });
   }
 
   async recordFlashSalePurchases(items: Array<{ productId: string; quantity: number }>) {
