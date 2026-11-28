@@ -1036,6 +1036,21 @@ export class DiscountService implements OnModuleInit {
     const campaign = await this.campaignRepo.findOne({ where: { id } });
     if (!campaign) throw new NotFoundException('Chiến dịch không tồn tại');
 
+    // Công tắc chỉ dùng được trong khung giờ diễn ra: ca sắp diễn ra tự bật khi tới giờ,
+    // ca đã kết thúc không thể bật lại (tránh trạng thái "Tạm ngưng" cho ca đã qua).
+    const bounds = this.getCampaignDateTimeBounds(campaign);
+    const nowMs = Date.now();
+    if (nowMs > bounds.endMs) {
+      throw new BadRequestException(
+        `Ca "${campaign.name}" đã kết thúc lúc ${this.formatVnDateTime(bounds.endMs)}, không thể bật / tắt.`,
+      );
+    }
+    if (nowMs < bounds.startMs) {
+      throw new BadRequestException(
+        `Ca "${campaign.name}" chưa đến giờ bắt đầu (${this.formatVnDateTime(bounds.startMs)}). Ca sẽ tự bật khi tới giờ; muốn tạm hoãn hãy sửa ca.`,
+      );
+    }
+
     const nextActive = !campaign.is_active;
     if (nextActive) {
       await this.validateNoOverlappingCampaign(

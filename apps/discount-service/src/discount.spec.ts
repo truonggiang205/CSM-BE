@@ -477,6 +477,24 @@ describe('DiscountService & DiscountController Unit Tests', () => {
       await expect(service.createFlashSale(dto)).rejects.toThrow('bị thêm trùng');
     });
 
+    it('Bật / tắt ca đã kết thúc hoặc chưa tới giờ -> Bị từ chối', async () => {
+      const ended = {
+        id: 'fs-old',
+        name: 'Ca cũ',
+        start_date: '2020-01-01',
+        end_date: '2020-01-01',
+        start_time: '10:00:00',
+        end_time: '12:00:00',
+        is_active: false,
+      };
+      mockCampaignRepo.findOne.mockResolvedValueOnce(ended as any);
+      await expect(service.toggleFlashSale('fs-old')).rejects.toThrow('đã kết thúc');
+
+      const upcoming = { ...ended, id: 'fs-new', start_date: '2099-01-01', end_date: '2099-01-01' };
+      mockCampaignRepo.findOne.mockResolvedValueOnce(upcoming as any);
+      await expect(service.toggleFlashSale('fs-new')).rejects.toThrow('chưa đến giờ bắt đầu');
+    });
+
     it('CUSTOMER tạo Flash Sale hoặc Combo -> Bị chặn 403', () => {
       const req = { headers: { 'x-user-role': 'CUSTOMER' } };
       expect(() => controller.createFlashSale(baseDto({ sale_price: 1 }) as any, req)).toThrow(ForbiddenException);
