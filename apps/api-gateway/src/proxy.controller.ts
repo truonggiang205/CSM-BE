@@ -239,7 +239,9 @@ export class ProxyController {
       cleanPath.includes('vouchers/claim') ||
       cleanPath.includes('vouchers/release') ||
       cleanPath.includes('discounts/vouchers/claim') ||
-      cleanPath.includes('discounts/vouchers/release')
+      cleanPath.includes('discounts/vouchers/release') ||
+      cleanPath.includes('flash-sales/claim') ||
+      cleanPath.includes('flash-sales/release')
     ) {
       return res.status(HttpStatus.FORBIDDEN).json({
         statusCode: HttpStatus.FORBIDDEN,

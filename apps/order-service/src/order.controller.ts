@@ -60,22 +60,62 @@ export class OrderController {
       );
     }
 
-    const activeFlashSaleMap = new Map<string, { salePrice: number; maxPerUser: number }>();
-    try {
-      const fsRes = await axios.get(`${DISCOUNT_SERVICE_URL}/flash-sales/current`, { timeout: 3000 });
-      if (fsRes.data && fsRes.data.status === 'ACTIVE' && Array.isArray(fsRes.data.items)) {
-        for (const fsItem of fsRes.data.items) {
-          if (fsItem.product_id && Number(fsItem.sale_price) > 0) {
-            activeFlashSaleMap.set(String(fsItem.product_id), {
-              salePrice: Number(fsItem.sale_price),
-              maxPerUser: Number(fsItem.max_per_user) || 2,
+    const internalHeaders = { 'x-internal-secret': process.env.INTERNAL_SECRET || '' };
+
+    // --- BƯỚC 0.2: GIỮ SUẤT GIỜ VÀNG (DISCOUNT SERVICE KHOÁ DÒNG, CHỐNG BÁN VƯỢT SUẤT KHI ĐẶT ĐỒNG THỜI) ---
+    // Mỗi sản phẩm: số suất giá sale = min(số lượng đặt, suất còn lại của ca, suất còn lại của khách);
+    // phần vượt quá tính theo giá gốc.
+    const flashAllocationMap = new Map<string, { saleQuantity: number; salePrice: number }>();
+    let flashClaimed = false;
+    const releaseFlashSale = async () => {
+      if (!flashClaimed) return;
+      try {
+        await axios.post(
+          `${DISCOUNT_SERVICE_URL}/flash-sales/release`,
+          { orderId },
+          { headers: internalHeaders, timeout: 5000 },
+        );
+      } catch (e: any) {
+        console.error('[OrderService] Hoàn suất Giờ Vàng thất bại:', e?.message);
+      }
+    };
+    const regularRequest = (items || [])
+      .map((i) => ({ productId: String(i.productId), quantity: Number(i.quantity) || 1 }))
+      .filter((i) => i.productId);
+    if (regularRequest.length > 0) {
+      try {
+        const claimRes = await axios.post(
+          `${DISCOUNT_SERVICE_URL}/flash-sales/claim`,
+          { orderId, userId: String(userId), items: regularRequest },
+          { headers: internalHeaders, timeout: 5000 },
+        );
+        flashClaimed = true;
+        for (const a of claimRes.data?.allocations || []) {
+          if (a?.productId && Number(a.saleQuantity) > 0 && Number(a.salePrice) > 0) {
+            flashAllocationMap.set(String(a.productId), {
+              saleQuantity: Number(a.saleQuantity),
+              salePrice: Number(a.salePrice),
             });
           }
         }
+      } catch (e: any) {
+        // Không giữ được suất (discount-service lỗi): vẫn cho đặt nhưng tính giá gốc, không bán lố suất sale
+        console.error('[OrderService] Không giữ được suất Giờ Vàng, tính giá gốc:', e?.message);
       }
-    } catch {}
+    }
 
-    const verifiedRegularItems = await Promise.all(
+    let verifiedRegularItems: Array<{
+      productId: string;
+      productName: string;
+      price: number;
+      quantity: number;
+      itemType: 'PRODUCT' | 'COMBO';
+      comboId: string | null;
+      comboItemsSnapshot: Array<{ productId: string; productName: string; quantity: number }> | null;
+    }>;
+    let verifiedCombos: typeof verifiedRegularItems;
+    try {
+    verifiedRegularItems = (await Promise.all(
       (items || []).map(async (item) => {
         let product: any;
         try {
@@ -99,54 +139,31 @@ export class OrderController {
         }
 
         const basePrice = Number(product.base_price) || 0;
-        const flashSaleInfo = activeFlashSaleMap.get(product.id.toString());
         const qty = Number(item.quantity) || 1;
-        let price = basePrice;
-
-        if (flashSaleInfo && flashSaleInfo.salePrice > 0 && flashSaleInfo.salePrice < basePrice) {
-          if (userId && userId !== 'anonymous') {
-            let boughtToday: number;
-            try {
-              const startOfDay = new Date();
-              startOfDay.setHours(0, 0, 0, 0);
-              const rawSum = await this.orderItemRepository
-                .createQueryBuilder('oi')
-                .innerJoin('oi.order', 'o')
-                .select('COALESCE(SUM(oi.quantity), 0)', 'total')
-                .where('o.user_id = :userId', { userId: userId.toString() })
-                .andWhere('o.status != :cancelled', { cancelled: OrderStatus.CANCELLED })
-                .andWhere('o.created_at >= :startOfDay', { startOfDay })
-                .andWhere('oi.product_id = :productId', { productId: product.id.toString() })
-                .andWhere("(oi.item_type IS NULL OR oi.item_type = 'PRODUCT')")
-                .getRawOne();
-              boughtToday = Number(rawSum?.total) || 0;
-            } catch {
-              boughtToday = 0;
-            }
-
-            if (boughtToday + qty > flashSaleInfo.maxPerUser) {
-              throw new HttpException(
-                `Mỗi khách hàng chỉ được mua tối đa ${flashSaleInfo.maxPerUser} suất Giờ Vàng hôm nay cho "${product.name}" (đã mua ${boughtToday}).`,
-                HttpStatus.BAD_REQUEST,
-              );
-            }
-          }
-          price = flashSaleInfo.salePrice;
-        }
-
-        return {
+        const allocation = flashAllocationMap.get(product.id.toString());
+        const lines: typeof verifiedRegularItems = [];
+        const line = (price: number, quantity: number, name: string) => ({
           productId: product.id.toString(),
-          productName: product.name,
-          price: price,
-          quantity: qty,
+          productName: name,
+          price,
+          quantity,
           itemType: 'PRODUCT' as const,
           comboId: null as string | null,
           comboItemsSnapshot: null as Array<{ productId: string; productName: string; quantity: number }> | null,
-        };
-      }),
-    );
+        });
 
-    const verifiedCombos = await Promise.all(
+        if (allocation && allocation.salePrice < basePrice) {
+          const saleQty = Math.min(qty, allocation.saleQuantity);
+          lines.push(line(allocation.salePrice, saleQty, product.name));
+          if (qty > saleQty) lines.push(line(basePrice, qty - saleQty, product.name));
+        } else {
+          lines.push(line(basePrice, qty, product.name));
+        }
+        return lines;
+      }),
+    )).flat();
+
+    verifiedCombos = await Promise.all(
       (combos || []).map(async (comboReq) => {
         let comboData: any;
         try {
@@ -211,6 +228,10 @@ export class OrderController {
         };
       }),
     );
+    } catch (verifyErr) {
+      await releaseFlashSale();
+      throw verifyErr;
+    }
 
     const verifiedItems = [...verifiedRegularItems, ...verifiedCombos];
 
@@ -243,6 +264,7 @@ export class OrderController {
         throw new HttpException('Không thể giữ hàng trong kho', HttpStatus.BAD_REQUEST);
       }
     } catch (err: any) {
+      await releaseFlashSale();
       throw new HttpException(
         err.response?.data?.message || 'Giữ tồn kho thất bại hoặc Inventory Service không phản hồi',
         HttpStatus.BAD_REQUEST,
@@ -286,6 +308,7 @@ export class OrderController {
         } catch (releaseErr: any) {
           console.error('[OrderService] Lỗi giải phóng tồn kho khi voucher không hợp lệ:', releaseErr.message);
         }
+        await releaseFlashSale();
         throw new HttpException(
           discErr.response?.data?.message || 'Mã giảm giá không hợp lệ hoặc đã hết hạn',
           HttpStatus.BAD_REQUEST,
@@ -401,18 +424,13 @@ export class OrderController {
           } catch (relErr: any) {
             console.error('[OrderService] Lỗi giải phóng voucher trong rollback:', relErr.message);
           }
+          await releaseFlashSale();
 
           throw new HttpException(
             claimErr.response?.data?.message || 'Voucher đã hết lượt sử dụng hoặc timeout trong lúc đặt hàng',
             HttpStatus.BAD_REQUEST,
           );
         }
-      }
-
-      if (verifiedRegularItems.length > 0) {
-        axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/record-purchase`, {
-          items: verifiedRegularItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-        }, { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua flash sale thất bại:', e?.message));
       }
 
       if (verifiedCombos.length > 0) {
@@ -435,6 +453,7 @@ export class OrderController {
       } catch (rollbackError) {
         console.error(`[CRITICAL] Rollback tồn kho thất bại! Cần can thiệp thủ công.`, rollbackError);
       }
+      await releaseFlashSale();
       if (appliedVoucherCode && savedOrder?.id) {
         try {
           await axios.post(
@@ -672,15 +691,10 @@ export class OrderController {
         }
       }
 
-      const regularOrderItems = (order.items || []).filter((item) => item.item_type !== 'COMBO');
-      if (regularOrderItems.length > 0) {
-        axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/rollback-purchase`, {
-          items: regularOrderItems.map((item) => ({
-            productId: item.product_id,
-            quantity: item.quantity,
-          })),
-        }, { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 }).catch((e) => console.error('[OrderService] Hoàn lại lượt mua flash sale thất bại:', e?.message));
-      }
+      // Trả lại đúng số suất Giờ Vàng đơn này đã giữ (về đúng ca, kể cả ca đã kết thúc) -> khách được mua lại
+      axios.post(`${DISCOUNT_SERVICE_URL}/flash-sales/release`, {
+        orderId: order.id,
+      }, { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 }).catch((e) => console.error('[OrderService] Hoàn lại suất Giờ Vàng thất bại:', e?.message));
 
       const comboOrderItems = (order.items || []).filter((item) => item.item_type === 'COMBO' && item.combo_id);
       if (comboOrderItems.length > 0) {

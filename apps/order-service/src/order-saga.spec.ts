@@ -210,4 +210,51 @@ describe('Order Service Saga Rollback Test (Ep loi DB sau khi reserve-stock)', (
 
     console.log('✅ XÁC NHẬN SAGA BÙ TRỪ TIMEOUT THÀNH CÔNG: Order đã xoá, kho đã hoàn, voucher đã release.');
   });
+  it('Giờ Vàng: chỉ phần được cấp suất tính giá sale, phần vượt giới hạn tính giá gốc; lỗi giữ kho -> trả suất', async () => {
+    const mockReq = { user: { id: 'usr-fs-1', role: 'CUSTOMER' }, headers: {} };
+    const orderDto = {
+      branchId: 'br-01',
+      items: [{ productId: 'prod-fs', quantity: 5 }],
+      shippingAddress: '1 Le Loi',
+      paymentMethod: 'COD',
+    };
+    mockedAxios.get.mockImplementation((url: string) => {
+      if (url.includes('/branches/')) return Promise.resolve({ data: { id: 'br-01' } } as any);
+      if (url.includes('/products/'))
+        return Promise.resolve({ data: { id: 'prod-fs', name: 'Mì ly', base_price: 10000 } } as any);
+      return Promise.reject(new Error('Unknown GET URL'));
+    });
+    const calls: Record<string, any[]> = {};
+    let failReserve = false;
+    mockedAxios.post.mockImplementation((url: string, body: any) => {
+      const key = url.replace(/^https?:\/\/[^/]+/, '');
+      (calls[key] = calls[key] || []).push(body);
+      if (url.includes('/flash-sales/claim')) {
+        // Ca còn 2 suất cho khách này -> 2 món giá sale, 3 món giá gốc
+        return Promise.resolve({ data: { allocations: [{ productId: 'prod-fs', saleQuantity: 2, salePrice: 7000 }] } } as any);
+      }
+      if (url.includes('/inventory/reserve-stock')) {
+        return failReserve
+          ? Promise.reject({ response: { data: { message: 'Hết hàng' } } })
+          : Promise.resolve({ data: { success: true } } as any);
+      }
+      return Promise.resolve({ data: { success: true } } as any);
+    });
+    orderRepository.save = jest.fn().mockImplementation((o) => Promise.resolve({ ...o }));
+
+    await orderController.createOrder(mockReq, orderDto as any);
+    const saved = orderRepository.save.mock.calls[0][0];
+    const lines = saved.items.map((i: any) => [i.price_snapshot, i.quantity]);
+    expect(lines).toEqual([
+      [7000, 2],
+      [10000, 3],
+    ]);
+    expect(saved.subtotal_amount).toBe(7000 * 2 + 10000 * 3);
+    // Kho vẫn giữ đủ 5 món (gộp theo sản phẩm)
+    expect(calls['/inventory/reserve-stock'][0].items).toEqual([{ productId: 'prod-fs', quantity: 5 }]);
+
+    failReserve = true;
+    await expect(orderController.createOrder(mockReq, orderDto as any)).rejects.toThrow(HttpException);
+    expect(calls['/flash-sales/release']?.length).toBe(1);
+  });
 });
