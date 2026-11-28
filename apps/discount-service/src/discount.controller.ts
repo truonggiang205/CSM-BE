@@ -3,6 +3,7 @@ import { requireEnv } from '@csm/config';
 import { DiscountService } from './discount.service';
 import { ValidateVoucherDto } from './dto/validate-voucher.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { CreateFlashSaleDto } from './dto/create-flash-sale.dto';
 import { UpdateFlashSaleDto } from './dto/update-flash-sale.dto';
 import { CreateComboDto } from './dto/create-combo.dto';
@@ -127,6 +128,24 @@ export class DiscountController {
       throw new ForbiddenException('Chỉ ADMIN mới có quyền bật/tắt voucher');
     }
     return this.discountService.toggleVoucher(id);
+  }
+
+  @Patch(['vouchers/:id', 'discounts/vouchers/:id'])
+  async updateVoucher(@Param('id') id: string, @Body() dto: UpdateVoucherDto, @Req() req?: any) {
+    const role = req?.headers?.['x-user-role'];
+    if (role !== 'ADMIN') {
+      throw new ForbiddenException('Chỉ ADMIN mới có quyền sửa voucher');
+    }
+    return this.discountService.updateVoucher(id, dto);
+  }
+
+  @Delete(['vouchers/:id', 'discounts/vouchers/:id'])
+  async deleteVoucher(@Param('id') id: string, @Req() req?: any) {
+    const role = req?.headers?.['x-user-role'];
+    if (role !== 'ADMIN') {
+      throw new ForbiddenException('Chỉ ADMIN mới có quyền xoá voucher');
+    }
+    return this.discountService.deleteVoucher(id);
   }
 
   @Get(['flash-sales', 'discounts/flash-sales'])
