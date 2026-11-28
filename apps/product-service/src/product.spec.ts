@@ -104,6 +104,7 @@ describe('ProductController & RolesGuard Unit Tests', () => {
       description: 'Nước uống giải khát',
       base_price: 15000,
       image_url: null as any,
+      is_active: true,
       category: null as any,
       created_at: new Date(),
       updated_at: new Date(),
@@ -368,6 +369,79 @@ describe('ProductController & RolesGuard Unit Tests', () => {
       expect(result.totalPages).toBe(0);
       expect(result.page).toBe(1);
       expect(result.limit).toBe(10);
+    });
+  });
+
+  describe('Trạng thái bán Đang bán / Tạm ngưng (FE#48)', () => {
+    const buildQb = () => ({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    });
+
+    it('Khách hàng chỉ thấy sản phẩm Đang bán, kể cả khi tự gửi includeInactive=true', async () => {
+      const qb: any = buildQb();
+      mockProductRepo.createQueryBuilder.mockReturnValue(qb);
+      await controller.getAllProducts({ includeInactive: 'true' }, { headers: { 'x-user-role': 'CUSTOMER' } });
+      expect(qb.andWhere).toHaveBeenCalledWith('product.is_active = :active', { active: true });
+    });
+
+    it('ADMIN gửi includeInactive=true -> thấy cả sản phẩm Tạm ngưng', async () => {
+      const qb: any = buildQb();
+      mockProductRepo.createQueryBuilder.mockReturnValue(qb);
+      await controller.getAllProducts({ includeInactive: 'true' }, { headers: { 'x-user-role': 'ADMIN' } });
+      expect(qb.andWhere).not.toHaveBeenCalledWith('product.is_active = :active', { active: true });
+    });
+
+    it('PATCH /products/:id/status đổi trạng thái; thiếu is_active -> 400; không có sản phẩm -> 404', async () => {
+      mockProductRepo.findOne.mockResolvedValueOnce({ id: 'p1', name: 'Nước suối', is_active: true });
+      const res = await controller.updateProductStatus('p1', { is_active: false });
+      expect(res.is_active).toBe(false);
+
+      await expect(controller.updateProductStatus('p1', {} as any)).rejects.toThrow(BadRequestException);
+
+      mockProductRepo.findOne.mockResolvedValueOnce(null);
+      await expect(controller.updateProductStatus('nope', { is_active: true })).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('Tạo sản phẩm: kiểm tra dữ liệu & SKU tự sinh (FE#47)', () => {
+    const { plainToInstance } = require('class-transformer');
+    const { validate } = require('class-validator');
+    const { CreateProductDto } = require('./dto/create-product.dto');
+
+    const errorsOf = async (body: any) => {
+      const dto = plainToInstance(CreateProductDto, body);
+      const errs = await validate(dto);
+      return errs.flatMap((e: any) => Object.values(e.constraints || {}));
+    };
+
+    it('Chặn giá 0đ / 14đ, tên quá dài, mô tả quá dài', async () => {
+      expect((await errorsOf({ name: 'Nước suối', base_price: 0 })).join()).toContain('từ 1.000đ');
+      expect((await errorsOf({ name: 'Nước suối', base_price: 14 })).join()).toContain('từ 1.000đ');
+      expect((await errorsOf({ name: 'A'.repeat(151), base_price: 10000 })).join()).toContain('tối đa 150');
+      expect(
+        (await errorsOf({ name: 'Nước suối', base_price: 10000, description: 'x'.repeat(1001) })).join(),
+      ).toContain('1.000 ký tự');
+      expect(await errorsOf({ name: 'Nước suối', base_price: 10000 })).toHaveLength(0);
+    });
+
+    it('Không gửi SKU -> hệ thống tự sinh SP-yymmdd-XXXX', async () => {
+      mockProductRepo.findOne.mockResolvedValue(null);
+      const res = await controller.createProduct({ name: '  Nước suối  ', base_price: 5000 } as any);
+      expect(res.sku).toMatch(/^SP-\d{6}-[0-9A-F]{4}$/);
+      expect(res.name).toBe('Nước suối');
+    });
+
+    it('SKU gửi lên bị trùng -> 409 Conflict', async () => {
+      mockProductRepo.findOne.mockResolvedValue({ id: 'old', sku: 'SP-250101-AAAA' });
+      await expect(
+        controller.createProduct({ name: 'Nước suối', base_price: 5000, sku: 'SP-250101-AAAA' } as any),
+      ).rejects.toThrow('đã tồn tại');
     });
   });
 });

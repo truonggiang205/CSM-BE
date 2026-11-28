@@ -27,6 +27,10 @@ export class Product {
   @Column({ type: 'boolean', default: false })
   is_featured?: boolean;
 
+  /** Đang bán (true) / Tạm ngưng (false). Sản phẩm tạm ngưng không hiện ở cửa hàng và không đặt được. */
+  @Column({ type: 'boolean', default: true })
+  is_active: boolean;
+
   @Column({ type: 'varchar', length: 500, nullable: true })
   curator_note?: string | null;
 
