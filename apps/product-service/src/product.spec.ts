@@ -408,4 +408,40 @@ describe('ProductController & RolesGuard Unit Tests', () => {
       await expect(controller.updateProductStatus('nope', { is_active: true })).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('Tạo sản phẩm: kiểm tra dữ liệu & SKU tự sinh (FE#47)', () => {
+    const { plainToInstance } = require('class-transformer');
+    const { validate } = require('class-validator');
+    const { CreateProductDto } = require('./dto/create-product.dto');
+
+    const errorsOf = async (body: any) => {
+      const dto = plainToInstance(CreateProductDto, body);
+      const errs = await validate(dto);
+      return errs.flatMap((e: any) => Object.values(e.constraints || {}));
+    };
+
+    it('Chặn giá 0đ / 14đ, tên quá dài, mô tả quá dài', async () => {
+      expect((await errorsOf({ name: 'Nước suối', base_price: 0 })).join()).toContain('từ 1.000đ');
+      expect((await errorsOf({ name: 'Nước suối', base_price: 14 })).join()).toContain('từ 1.000đ');
+      expect((await errorsOf({ name: 'A'.repeat(151), base_price: 10000 })).join()).toContain('tối đa 150');
+      expect(
+        (await errorsOf({ name: 'Nước suối', base_price: 10000, description: 'x'.repeat(1001) })).join(),
+      ).toContain('1.000 ký tự');
+      expect(await errorsOf({ name: 'Nước suối', base_price: 10000 })).toHaveLength(0);
+    });
+
+    it('Không gửi SKU -> hệ thống tự sinh SP-yymmdd-XXXX', async () => {
+      mockProductRepo.findOne.mockResolvedValue(null);
+      const res = await controller.createProduct({ name: '  Nước suối  ', base_price: 5000 } as any);
+      expect(res.sku).toMatch(/^SP-\d{6}-[0-9A-F]{4}$/);
+      expect(res.name).toBe('Nước suối');
+    });
+
+    it('SKU gửi lên bị trùng -> 409 Conflict', async () => {
+      mockProductRepo.findOne.mockResolvedValue({ id: 'old', sku: 'SP-250101-AAAA' });
+      await expect(
+        controller.createProduct({ name: 'Nước suối', base_price: 5000, sku: 'SP-250101-AAAA' } as any),
+      ).rejects.toThrow('đã tồn tại');
+    });
+  });
 });

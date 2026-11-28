@@ -12,6 +12,7 @@ import {
   Optional,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -81,6 +82,18 @@ export class ProductController {
   async deleteCategory(@Param('id') id: string) {
     await this.categoryRepository.delete(id);
     return { success: true, message: 'Xóa danh mục thành công' };
+  }
+
+  /** Sinh mã SKU dạng SP-yymmdd-XXXX, thử lại khi trùng. */
+  private async generateUniqueSku(): Promise<string> {
+    const vn = new Date(Date.now() + 7 * 3600 * 1000);
+    const ymd = vn.toISOString().slice(2, 10).replace(/-/g, '');
+    for (let i = 0; i < 10; i++) {
+      const sku = `SP-${ymd}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const dup = await this.productRepository.findOne({ where: { sku } });
+      if (!dup) return sku;
+    }
+    throw new ConflictException('Không sinh được mã SKU, vui lòng thử lại.');
   }
 
   // --- PRODUCT CRUD ---
@@ -239,8 +252,19 @@ export class ProductController {
       if (!category) throw new NotFoundException('Không tìm thấy danh mục');
     }
 
+    // SKU do hệ thống quản lý: tự sinh khi bỏ trống, luôn kiểm tra trùng trước khi lưu.
+    let sku = body.sku ? body.sku.trim().toUpperCase() : '';
+    if (sku) {
+      const dup = await this.productRepository.findOne({ where: { sku } });
+      if (dup) throw new ConflictException(`Mã SKU '${sku}' đã tồn tại, vui lòng tạo lại.`);
+    } else {
+      sku = await this.generateUniqueSku();
+    }
+
     const product = this.productRepository.create({
       ...body,
+      name: body.name.trim(),
+      sku,
       category: category || undefined,
     });
     return this.productRepository.save(product);
