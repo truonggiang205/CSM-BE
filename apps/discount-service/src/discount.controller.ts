@@ -273,6 +273,16 @@ export class DiscountController {
     return this.discountService.deleteCombo(id);
   }
 
+  /** order-service gọi nội bộ để giữ suất combo (khoá dòng, chống bán vượt suất khi đặt đồng thời). */
+  @Post(['combos/claim', 'discounts/combos/claim'])
+  claimComboPurchases(
+    @Body('combos') combos: Array<{ comboId: string; quantity: number }>,
+    @Req() req?: any,
+  ) {
+    assertInternalOrAdmin(req);
+    return this.discountService.claimComboPurchases(combos || []);
+  }
+
   @Post(['combos/record-purchase', 'discounts/combos/record-purchase'])
   recordComboPurchases(
     @Body('combos') combos: Array<{ comboId: string; quantity: number }>,

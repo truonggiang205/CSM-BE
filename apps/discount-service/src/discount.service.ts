@@ -1716,6 +1716,60 @@ export class DiscountService implements OnModuleInit {
     return { success: true, message: 'Đã xóa Combo thành công' };
   }
 
+  /**
+   * Giữ suất combo khi đặt hàng (FE#25): khoá dòng combo (pessimistic_write) rồi mới kiểm tra
+   * và tăng sold_count trong CÙNG một transaction, nên hai khách đặt cùng lúc suất cuối
+   * thì chỉ một người giữ được. Tất cả hoặc không: một combo hết suất thì không giữ combo nào.
+   * Huỷ đơn / rollback dùng rollbackComboPurchases.
+   */
+  async claimComboPurchases(combos: Array<{ comboId: string; quantity: number }>) {
+    const merged = new Map<string, number>();
+    for (const c of combos || []) {
+      if (!c?.comboId) continue;
+      merged.set(String(c.comboId), (merged.get(String(c.comboId)) || 0) + Math.max(1, Number(c.quantity) || 1));
+    }
+    if (merged.size === 0) return { success: true, claimed: [] };
+    // Khoá theo thứ tự id cố định để hai đơn khoá nhiều combo không bị deadlock
+    const ids = Array.from(merged.keys()).sort();
+
+    return this.dataSource.transaction(async (manager) => {
+      const now = new Date();
+      const claimed: Array<{ comboId: string; quantity: number; soldCount: number }> = [];
+      for (const id of ids) {
+        const combo = await manager
+          .getRepository(Combo)
+          .createQueryBuilder('c')
+          .setLock('pessimistic_write')
+          .where('c.id = :id', { id })
+          .getOne();
+        if (!combo) throw new NotFoundException(`Không tìm thấy Combo với ID ${id}`);
+        if (!combo.is_active) throw new BadRequestException(`Combo "${combo.name}" hiện đang tạm ngưng`);
+        if (combo.start_date && new Date(combo.start_date) > now) {
+          throw new BadRequestException(`Combo "${combo.name}" chưa đến thời gian mở bán`);
+        }
+        if (combo.end_date && new Date(combo.end_date) < now) {
+          throw new BadRequestException(`Combo "${combo.name}" đã hết hạn áp dụng`);
+        }
+        const qty = merged.get(id)!;
+        const sold = Number(combo.sold_count) || 0;
+        if (combo.max_quantity !== null && combo.max_quantity !== undefined) {
+          const remaining = Number(combo.max_quantity) - sold;
+          if (qty > remaining) {
+            throw new ConflictException(
+              remaining > 0
+                ? `Combo "${combo.name}" chỉ còn ${remaining} suất, không đủ ${qty} suất bạn đặt`
+                : `Combo "${combo.name}" vừa hết suất ưu đãi`,
+            );
+          }
+        }
+        combo.sold_count = sold + qty;
+        await manager.save(combo);
+        claimed.push({ comboId: id, quantity: qty, soldCount: combo.sold_count });
+      }
+      return { success: true, claimed };
+    });
+  }
+
   async recordComboPurchases(combos: Array<{ comboId: string; quantity: number }>) {
     let updatedCount = 0;
     for (const entry of combos) {
