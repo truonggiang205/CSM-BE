@@ -9,6 +9,7 @@ import { Combo } from './entities/combo.entity';
 import { ComboItem } from './entities/combo-item.entity';
 import { SpinHistory } from './entities/spin-history.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import axios from 'axios';
 import { DataSource } from 'typeorm';
 import { BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 
@@ -179,6 +180,84 @@ describe('DiscountService & DiscountController Unit Tests', () => {
 
     service = module.get<DiscountService>(DiscountService);
     controller = module.get<DiscountController>(DiscountController);
+  });
+
+  describe('3d. Kiểm tra dữ liệu khi tạo combo (FE#28)', () => {
+    const baseCombo = {
+      name: 'Combo Bữa Sáng',
+      combo_price: 30000,
+      items: [
+        { product_id: 'p1', product_name: 'Bánh mì', original_price: 20000, quantity: 1 },
+        { product_id: 'p2', product_name: 'Cà phê', original_price: 20000, quantity: 1 },
+      ],
+    };
+
+    it('Bỏ trống giá bán hoặc giá 0đ / dưới 1.000đ -> bị chặn', async () => {
+      await expect(service.createCombo({ ...baseCombo, combo_price: undefined } as any)).rejects.toThrow(
+        'Vui lòng nhập giá bán',
+      );
+      await expect(service.createCombo({ ...baseCombo, combo_price: 0 })).rejects.toThrow('từ 1.000đ');
+      await expect(service.createCombo({ ...baseCombo, combo_price: 500 })).rejects.toThrow('từ 1.000đ');
+    });
+
+    it('URL ảnh nhập bừa -> bị chặn; URL https hoặc /uploads hợp lệ', async () => {
+      await expect(service.createCombo({ ...baseCombo, image_url: 'abc xyz' })).rejects.toThrow('URL ảnh');
+      await expect(
+        service.createCombo({ ...baseCombo, image_url: 'https://cdn.example.com/a.jpg' }),
+      ).resolves.toBeDefined();
+      await expect(service.createCombo({ ...baseCombo, image_url: '/uploads/abc.jpg' })).resolves.toBeDefined();
+    });
+
+    it('Món trùng, số lượng món quá lớn, tên quá ngắn -> bị chặn', async () => {
+      await expect(
+        service.createCombo({ ...baseCombo, items: [baseCombo.items[0], baseCombo.items[0]] }),
+      ).rejects.toThrow('một lần');
+      await expect(
+        service.createCombo({ ...baseCombo, items: [{ ...baseCombo.items[0], quantity: 100 }, baseCombo.items[1]] }),
+      ).rejects.toThrow('1 đến 99');
+      await expect(service.createCombo({ ...baseCombo, name: 'AB' })).rejects.toThrow('3 đến 100');
+    });
+  });
+
+  describe('3e. Kiểm tra tồn kho khi tạo combo (FE#30, FE#31)', () => {
+    const combo = {
+      name: 'Combo Ăn Trưa',
+      combo_price: 30000,
+      items: [
+        { product_id: 'p-com', product_name: 'Cơm hộp', original_price: 25000, quantity: 2 },
+        { product_id: 'p-nuoc', product_name: 'Nước suối', original_price: 10000, quantity: 1 },
+      ],
+    };
+    const stockOf: Record<string, Array<{ branch_id: string; available: number }>> = {};
+
+    beforeEach(() => {
+      jest.spyOn(axios, 'get').mockImplementation(async (url: string) => {
+        const id = decodeURIComponent(String(url).split('/inventory/product/')[1] || '');
+        return { data: stockOf[id] || [] } as any;
+      });
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('Món hết hàng ở mọi chi nhánh -> không tạo được combo', async () => {
+      stockOf['p-com'] = [{ branch_id: 'br-01', available: 0 }];
+      stockOf['p-nuoc'] = [{ branch_id: 'br-01', available: 10 }];
+      await expect(service.createCombo(combo)).rejects.toThrow('Cơm hộp" đã hết hàng');
+    });
+
+    it('Số lượng mỗi suất vượt tồn kho lớn nhất của 1 chi nhánh -> bị chặn (tổng nhiều chi nhánh không tính)', async () => {
+      stockOf['p-com'] = [
+        { branch_id: 'br-01', available: 1 },
+        { branch_id: 'br-02', available: 1 },
+      ];
+      stockOf['p-nuoc'] = [{ branch_id: 'br-01', available: 10 }];
+      await expect(service.createCombo(combo)).rejects.toThrow('chỉ còn tối đa 1');
+    });
+
+    it('Đủ hàng ở ít nhất 1 chi nhánh -> tạo được combo', async () => {
+      stockOf['p-com'] = [{ branch_id: 'br-02', available: 5 }];
+      stockOf['p-nuoc'] = [{ branch_id: 'br-02', available: 3 }];
+      await expect(service.createCombo(combo)).resolves.toBeDefined();
+    });
   });
 
   describe('1. Logic tính toán và Validate Voucher (validateVoucher)', () => {
