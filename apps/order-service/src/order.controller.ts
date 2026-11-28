@@ -67,7 +67,22 @@ export class OrderController {
     // phần vượt quá tính theo giá gốc.
     const flashAllocationMap = new Map<string, { saleQuantity: number; salePrice: number }>();
     let flashClaimed = false;
+    // Suất combo giữ ở BƯỚC 0.6 — trả lại cùng lúc với suất Giờ Vàng khi đơn thất bại
+    let claimedCombos: Array<{ comboId: string; quantity: number }> = [];
     const releaseFlashSale = async () => {
+      if (claimedCombos.length > 0) {
+        const toRelease = claimedCombos;
+        claimedCombos = [];
+        try {
+          await axios.post(
+            `${DISCOUNT_SERVICE_URL}/combos/rollback-purchase`,
+            { combos: toRelease },
+            { headers: internalHeaders, timeout: 5000 },
+          );
+        } catch (e: any) {
+          console.error('[OrderService] Hoàn suất combo thất bại:', e?.message);
+        }
+      }
       if (!flashClaimed) return;
       try {
         await axios.post(
@@ -224,6 +239,25 @@ export class OrderController {
     } catch (verifyErr) {
       await releaseFlashSale();
       throw verifyErr;
+    }
+
+    // --- BƯỚC 0.6: GIỮ SUẤT COMBO (KHOÁ DÒNG Ở DISCOUNT SERVICE, CHỐNG HAI KHÁCH CÙNG LẤY SUẤT CUỐI) ---
+    if (verifiedCombos.length > 0) {
+      const comboRequest = verifiedCombos.map((c) => ({ comboId: String(c.comboId), quantity: c.quantity }));
+      try {
+        await axios.post(
+          `${DISCOUNT_SERVICE_URL}/combos/claim`,
+          { combos: comboRequest },
+          { headers: internalHeaders, timeout: 5000 },
+        );
+        claimedCombos = comboRequest;
+      } catch (e: any) {
+        await releaseFlashSale();
+        throw new HttpException(
+          e?.response?.data?.message || 'Không giữ được suất combo, vui lòng thử lại',
+          e?.response?.status === 409 ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST,
+        );
+      }
     }
 
     const verifiedItems = [...verifiedRegularItems, ...verifiedCombos];
@@ -426,11 +460,7 @@ export class OrderController {
         }
       }
 
-      if (verifiedCombos.length > 0) {
-        axios.post(`${DISCOUNT_SERVICE_URL}/combos/record-purchase`, {
-          combos: verifiedCombos.map((c) => ({ comboId: c.comboId, quantity: c.quantity })),
-        }, { headers: { 'x-internal-secret': process.env.INTERNAL_SECRET || '' }, timeout: 5000 }).catch((e) => console.error('[OrderService] Ghi nhận lượt mua combo thất bại:', e?.message));
-      }
+      // Suất combo đã được giữ (và tính vào sold_count) ở BƯỚC 0.6 nên không ghi nhận lại ở đây
     } catch (dbError) {
       if (dbError instanceof HttpException) {
         throw dbError;

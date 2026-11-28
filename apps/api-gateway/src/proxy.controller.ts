@@ -241,6 +241,9 @@ export class ProxyController {
       cleanPath.includes('discounts/vouchers/claim') ||
       cleanPath.includes('discounts/vouchers/release') ||
       cleanPath.includes('flash-sales/claim') ||
+      cleanPath.includes('combos/claim') ||
+      cleanPath.includes('combos/record-purchase') ||
+      cleanPath.includes('combos/rollback-purchase') ||
       cleanPath.includes('flash-sales/release')
     ) {
       return res.status(HttpStatus.FORBIDDEN).json({
